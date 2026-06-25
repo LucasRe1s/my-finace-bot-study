@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
@@ -20,6 +22,8 @@ async def create_group(
 ):
     db = get_supabase()
     result = db.table("groups").insert({"name": data.name, "owner_id": user["id"]}).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Erro ao criar grupo. Tente novamente.")
     group = result.data[0]
     db.table("group_members").insert({"group_id": group["id"], "user_id": user["id"], "role": "owner"}).execute()
     return group
@@ -37,6 +41,8 @@ async def invite_member(
         "invited_by": user["id"],
         "email": data.email,
     }).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Erro ao criar convite. Tente novamente.")
     return result.data[0]
 
 
@@ -55,5 +61,5 @@ async def accept_invite(
         "user_id": user["id"],
         "role": "member",
     }).execute()
-    db.table("invites").update({"accepted_at": "NOW()"}).eq("id", invite.data["id"]).execute()
+    db.table("invites").update({"accepted_at": datetime.now(timezone.utc).isoformat()}).eq("id", invite.data["id"]).execute()
     return {"message": "Convite aceito com sucesso"}
