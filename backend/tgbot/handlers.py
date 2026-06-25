@@ -95,6 +95,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     tools = build_tools(
         user_token=context.bot_data.get("service_token", ""),
         api_base_url=context.bot_data.get("api_base_url", "http://localhost:8000"),
+        bot=context.bot,
+        telegram_id=telegram_id,
     )
     agent = create_agent(tools)
 

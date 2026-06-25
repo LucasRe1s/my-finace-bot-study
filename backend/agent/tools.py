@@ -45,6 +45,19 @@ def build_tools(
                 json=payload,
                 headers=headers,
             )
+            if response.status_code == 201 and bot and telegram_id:
+                limits_response = await client.get(f"{api_base_url}/limits/", headers=headers)
+                if limits_response.status_code == 200:
+                    for lim in limits_response.json():
+                        if lim["category"] == category:
+                            from tgbot.alerts import check_and_send_alerts
+                            await check_and_send_alerts(
+                                bot=bot,
+                                telegram_id=telegram_id,
+                                category=category,
+                                spent=lim["spent"],
+                                monthly_limit=lim["monthly_limit"],
+                            )
         if response.status_code == 201:
             tx = response.json()
             tipo = "Receita" if type == "income" else "Despesa"
