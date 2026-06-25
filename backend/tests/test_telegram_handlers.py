@@ -18,7 +18,7 @@ async def test_start_command_registers_new_user():
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
 
     with patch("tgbot.handlers.get_supabase", return_value=mock_db):
-        with patch("tgbot.handlers._get_or_create_user", return_value=({}, True)):
+        with patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, True)):
             await handle_start(update, context)
 
     update.message.reply_text.assert_called_once()
