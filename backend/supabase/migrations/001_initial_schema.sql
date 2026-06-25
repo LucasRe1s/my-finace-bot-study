@@ -110,3 +110,46 @@ CREATE POLICY "limits_group_members" ON public.category_limits
       WHERE gm.group_id = category_limits.group_id AND gm.user_id = auth.uid()
     )
   );
+
+-- Groups: owner can do everything; members can read
+CREATE POLICY "groups_owner_all" ON public.groups
+  FOR ALL USING (auth.uid() = owner_id);
+
+CREATE POLICY "groups_members_select" ON public.groups
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.group_members gm
+      WHERE gm.group_id = groups.id AND gm.user_id = auth.uid()
+    )
+  );
+
+-- Group members: members can insert themselves (when accepting invite)
+CREATE POLICY "group_members_insert_self" ON public.group_members
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Group members: owner can manage all members of their group
+CREATE POLICY "group_members_owner_all" ON public.group_members
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM public.groups g
+      WHERE g.id = group_members.group_id AND g.owner_id = auth.uid()
+    )
+  );
+
+-- Invites: group members can read invites for their group
+CREATE POLICY "invites_group_members_select" ON public.invites
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.group_members gm
+      WHERE gm.group_id = invites.group_id AND gm.user_id = auth.uid()
+    )
+  );
+
+-- Invites: group owner can insert invites
+CREATE POLICY "invites_owner_insert" ON public.invites
+  FOR INSERT WITH CHECK (auth.uid() = invited_by);
+
+-- Invites: invited user can update (mark as accepted) using token
+CREATE POLICY "invites_accept_update" ON public.invites
+  FOR UPDATE USING (true)
+  WITH CHECK (accepted_at IS NOT NULL);
