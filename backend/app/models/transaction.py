@@ -1,5 +1,5 @@
 from pydantic import BaseModel, field_validator, model_validator
-from datetime import date
+from datetime import date as DateType
 from enum import Enum
 from typing import Optional
 
@@ -19,7 +19,7 @@ class TransactionCreate(BaseModel):
     type: TransactionType
     category: str
     description: str = ""
-    date: Optional[date] = None
+    date: Optional[DateType] = None
 
     @field_validator("amount")
     @classmethod
@@ -38,7 +38,7 @@ class TransactionCreate(BaseModel):
     @model_validator(mode="after")
     def default_date(self) -> "TransactionCreate":
         if self.date is None:
-            self.date = date.today()
+            self.date = DateType.today()
         return self
 
 
