@@ -9,7 +9,7 @@ from agent.tools import build_tools
 from app.database import get_supabase
 
 
-async def _get_or_create_user(db, telegram_id: int, first_name: str) -> dict | None:
+async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[dict | None, bool]:
     try:
         result = (
             db.table("users")
@@ -19,7 +19,7 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> dict | N
             .execute()
         )
         if result.data:
-            return result.data
+            return result.data, False  # existing user
     except Exception:
         pass
     # User not found — create it
@@ -29,8 +29,8 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> dict | N
         .execute()
     )
     if not insert_result.data:
-        return None
-    return insert_result.data[0]
+        return None, False
+    return insert_result.data[0], True  # new user
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -38,21 +38,23 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     first_name = update.effective_user.first_name or "usuário"
     db = get_supabase()
 
-    user = await _get_or_create_user(db, telegram_id, first_name)
+    user, is_new = await _get_or_create_user(db, telegram_id, first_name)
 
-    if user:
+    if user and not is_new:
         msg = (
             f"Bem-vindo de volta, {first_name}.\n\n"
             "Estou pronto para auxiliá-lo no controle financeiro.\n"
             "Use /ajuda para ver os comandos disponíveis."
         )
-    else:
+    elif user and is_new:
         msg = (
             f"Olá, {first_name}. Bem-vindo ao Assistente Financeiro.\n\n"
             "Para começar, informe suas transações em linguagem natural.\n"
             "Exemplo: 'Gastei R$ 50,00 no mercado hoje'\n\n"
             "Use /ajuda para ver todos os comandos disponíveis."
         )
+    else:
+        msg = "Não foi possível registrar seu acesso. Por favor, tente novamente."
 
     await update.message.reply_text(msg)
 
@@ -60,8 +62,8 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = (
         "Comandos disponíveis:\n\n"
-        "/start -- Iniciar ou reiniciar o assistente\n"
-        "/ajuda -- Exibir esta mensagem\n\n"
+        "/start — Iniciar ou reiniciar o assistente\n"
+        "/ajuda — Exibir esta mensagem\n\n"
         "O que posso fazer por você:\n"
         "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
         "- Consultar saldo do mês ('Qual meu saldo?')\n"
@@ -78,7 +80,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_message = update.message.text
     db = get_supabase()
 
-    user = await _get_or_create_user(db, telegram_id, update.effective_user.first_name or "")
+    user, _ = await _get_or_create_user(db, telegram_id, update.effective_user.first_name or "")
     if not user:
         await update.message.reply_text(
             "Usuário não encontrado. Por favor, use /start para se registrar."

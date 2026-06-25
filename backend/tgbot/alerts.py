@@ -9,7 +9,7 @@ async def check_and_send_alerts(
     spent: float,
     monthly_limit: float,
 ) -> None:
-    """Envia alerta ao usuario se limite de categoria atingiu 80% ou 100%."""
+    """Envia alerta ao usuário se limite de categoria atingiu 80% ou 100%."""
     if monthly_limit <= 0:
         return
 

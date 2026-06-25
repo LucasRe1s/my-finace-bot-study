@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_start_command_registers_new_user():
-    from tgbot.handlers import handle_start
+    from tgbot.handlers import handle_start, _get_or_create_user
 
     update = MagicMock()
     update.effective_user.id = 123456789
@@ -18,7 +18,8 @@ async def test_start_command_registers_new_user():
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
 
     with patch("tgbot.handlers.get_supabase", return_value=mock_db):
-        await handle_start(update, context)
+        with patch("tgbot.handlers._get_or_create_user", return_value=({}, True)):
+            await handle_start(update, context)
 
     update.message.reply_text.assert_called_once()
     call_args = update.message.reply_text.call_args[0][0]
@@ -50,6 +51,7 @@ async def test_handle_message_calls_agent():
 
     with (
         patch("tgbot.handlers.get_supabase", return_value=mock_db),
+        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
         patch("tgbot.handlers.create_agent", return_value=mock_agent),
         patch("tgbot.handlers.get_history", return_value=[]),
         patch("tgbot.handlers.save_history", return_value=None),
