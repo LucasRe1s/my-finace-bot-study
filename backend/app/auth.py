@@ -21,7 +21,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authenticated",
+            detail="Não autenticado",
         )
     token = credentials.credentials
     try:
