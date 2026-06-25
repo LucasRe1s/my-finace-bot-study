@@ -15,7 +15,7 @@ async def test_registrar_transacao_success():
         "id": "tx-uuid",
         "amount": 50.0,
         "type": "expense",
-        "category": "Alimentacao",
+        "category": "Alimentação",
         "description": "Mercado",
         "date": "2026-06-25",
     }
@@ -25,13 +25,13 @@ async def test_registrar_transacao_success():
         result = await registrar(
             amount=50.0,
             type="expense",
-            category="Alimentacao",
+            category="Alimentação",
             description="Mercado",
             date="2026-06-25",
         )
 
     assert "R$ 50,00" in result
-    assert "Alimentacao" in result
+    assert "Alimentação" in result
 
 
 @pytest.mark.asyncio
@@ -46,7 +46,7 @@ async def test_consultar_resumo_success():
         "total_income": 5000.0,
         "total_expense": 800.0,
         "balance": 4200.0,
-        "by_category": [{"category": "Alimentacao", "total": 300.0}],
+        "by_category": [{"category": "Alimentação", "total": 300.0}],
     }
 
     with patch("httpx.AsyncClient") as mock_client:
@@ -54,4 +54,4 @@ async def test_consultar_resumo_success():
         result = await consultar(month="2026-06")
 
     assert "R$ 4.200,00" in result
-    assert "Alimentacao" in result
+    assert "Alimentação" in result
