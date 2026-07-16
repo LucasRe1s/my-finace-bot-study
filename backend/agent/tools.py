@@ -1,11 +1,54 @@
 # -*- coding: utf-8 -*-
 import httpx
+import inspect
+import json
+import re
 from datetime import date as DateType
+
+_LEAKED_FUNCTION_CALL = re.compile(r"<function=(\w+)>(\{.*?\})</function>", re.DOTALL)
+
+_FALLBACK_MESSAGE = "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
 
 
 def _fmt_brl(value: float) -> str:
     """Formata float para R$ 1.234,56"""
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def resolve_leaked_tool_call(reply: str, tools: list) -> str | None:
+    """Alguns modelos (ex.: Llama via Groq) as vezes emitem a chamada de tool no
+    formato de texto nativo do Llama (`<function=nome>{...}</function>`) em vez de
+    usar o mecanismo estruturado de tool_calls da API -- nesse caso a tool nunca e
+    executada e o texto vazado vira a resposta do bot. Detecta esse padrao, executa
+    a tool manualmente com os argumentos parseados e retorna o resultado real.
+    Retorna None se a resposta nao contiver esse vazamento."""
+    match = _LEAKED_FUNCTION_CALL.search(reply)
+    if not match:
+        return None
+
+    name, raw_args = match.group(1), match.group(2)
+    fn = next((t for t in tools if t.__name__ == name), None)
+    if fn is None:
+        return _FALLBACK_MESSAGE
+
+    try:
+        args = json.loads(raw_args)
+    except json.JSONDecodeError:
+        return _FALLBACK_MESSAGE
+
+    valid_params = inspect.signature(fn).parameters
+    kwargs = {k: v for k, v in args.items() if k in valid_params}
+    return await fn(**kwargs)
+
+
+def is_raw_provider_error(reply: str) -> bool:
+    """Quando o modelo tenta uma chamada de tool malformada (ex.: sintaxe de
+    function-call incompleta), a API as vezes rejeita a geracao e o agno
+    devolve o JSON de erro bruto do provedor como se fosse a resposta final --
+    em vez de levantar uma excecao. Detecta esse caso pra nao expor o erro cru
+    ao usuario."""
+    stripped = reply.strip()
+    return stripped.startswith('{"error"') or "tool_use_failed" in stripped or "invalid_request_error" in stripped
 
 
 def build_tools(
@@ -63,6 +106,22 @@ def build_tools(
             tipo = "Receita" if type == "income" else "Despesa"
             return f"Transação registrada com sucesso. {tipo} de {_fmt_brl(amount)} em {category} na data {tx['date']}."
         return f"Erro ao registrar transação: {response.text}"
+
+    async def criar_grupo(name: str = "Minha Família") -> str:
+        """Cria o grupo financeiro do usuário, caso ele ainda não tenha um.
+
+        Args:
+            name: Nome do grupo (padrão: "Minha Família")
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{api_base_url}/groups/",
+                json={"name": name},
+                headers=headers,
+            )
+        if response.status_code == 201:
+            return f"Grupo '{name}' criado com sucesso. Você já pode registrar transações e definir limites."
+        return f"Erro ao criar grupo: {response.text}"
 
     async def consultar_extrato(
         month: str = None,
@@ -176,6 +235,7 @@ def build_tools(
 
     return [
         registrar_transacao,
+        criar_grupo,
         consultar_extrato,
         consultar_resumo,
         consultar_limites,

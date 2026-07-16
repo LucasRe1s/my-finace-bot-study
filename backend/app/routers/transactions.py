@@ -11,13 +11,25 @@ from ..models.transaction import Transaction, TransactionCreate
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+def _ensure_user_profile(db: Client, user: dict) -> None:
+    """Cria/atualiza a linha em public.users para o usuário autenticado via Supabase Auth.
+
+    A migration 002 removeu o FK de public.users para auth.users (para o bot
+    criar usuarios com UUID proprio), entao usuarios web nunca ganham essa linha
+    automaticamente -- e groups/group_members referenciam public.users(id) via
+    FK. Sem isso, criar grupo ou aceitar convite falha com violacao de FK."""
+    db.table("users").upsert(
+        {"id": user["id"], "name": user.get("email", "")},
+        on_conflict="id",
+    ).execute()
+
+
 def _get_user_group(db: Client, user_id: str) -> str:
     result = (
         db.table("group_members")
         .select("group_id")
         .eq("user_id", user_id)
         .limit(1)
-        .single()
         .execute()
     )
     if not result.data:
@@ -25,7 +37,7 @@ def _get_user_group(db: Client, user_id: str) -> str:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuário não pertence a nenhum grupo. Crie um grupo ou aceite um convite.",
         )
-    return result.data["group_id"]
+    return result.data[0]["group_id"]
 
 
 @router.post("/", response_model=Transaction, status_code=status.HTTP_201_CREATED)
@@ -33,7 +45,7 @@ async def create_transaction(
     data: TransactionCreate,
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     result = (
         db.table("transactions")
@@ -58,7 +70,7 @@ async def list_transactions(
     type: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     query = db.table("transactions").select("*").eq("group_id", group_id)
 

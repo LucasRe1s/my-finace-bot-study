@@ -1,28 +1,43 @@
 # -*- coding: utf-8 -*-
+import httpx
+import jwt
+import logging
+from datetime import datetime, timezone, timedelta
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+logger = logging.getLogger("bot")
+
 from agent.bot import create_agent
 from agent.history import get_history, save_history
-from agent.tools import build_tools
+from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
+from app.config import settings
 from app.database import get_supabase
 
 
+def _generate_user_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "aud": "authenticated",
+        "role": "authenticated",
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+    }
+    return jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+
+
 async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[dict | None, bool]:
-    try:
-        result = (
-            db.table("users")
-            .select("*")
-            .eq("telegram_id", telegram_id)
-            .single()
-            .execute()
-        )
-        if result.data:
-            return result.data, False  # existing user
-    except Exception:
-        pass
-    # User not found — create it
+    result = (
+        db.table("users")
+        .select("*")
+        .eq("telegram_id", telegram_id)
+        .maybe_single()
+        .execute()
+    )
+    if result and result.data:
+        return result.data, False
+    logger.info("Novo usuário Telegram %s (%s) — criando registro", telegram_id, first_name)
     insert_result = (
         db.table("users")
         .insert({"telegram_id": telegram_id, "name": first_name})
@@ -30,28 +45,56 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[di
     )
     if not insert_result.data:
         return None, False
-    return insert_result.data[0], True  # new user
+    return insert_result.data[0], True
+
+
+async def _link_telegram_account(telegram_id: int, code: str, api_base_url: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{api_base_url}/auth/telegram-link",
+            json={"code": code, "telegram_id": telegram_id},
+        )
+    if response.status_code == 200:
+        return (
+            "Telegram vinculado à sua conta com sucesso.\n\n"
+            "Suas transações e limites agora são os mesmos do painel web."
+        )
+    if response.status_code == 404:
+        return "Não foi possível vincular sua conta: código inválido ou expirado."
+
+    logger.warning(
+        "Falha inesperada ao vincular telegram_id=%s: status=%s body=%s",
+        telegram_id, response.status_code, response.text[:300],
+    )
+    return "Não foi possível vincular sua conta agora. Tente novamente em instantes."
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     first_name = update.effective_user.first_name or "usuário"
+
+    if context.args:
+        api_base_url = context.bot_data.get("api_base_url", "http://localhost:8000")
+        msg = await _link_telegram_account(telegram_id, context.args[0], api_base_url)
+        await update.message.reply_text(msg)
+        return
+
     db = get_supabase()
 
     user, is_new = await _get_or_create_user(db, telegram_id, first_name)
 
-    if user and not is_new:
-        msg = (
-            f"Bem-vindo de volta, {first_name}.\n\n"
-            "Estou pronto para auxiliá-lo no controle financeiro.\n"
-            "Use /ajuda para ver os comandos disponíveis."
-        )
-    elif user and is_new:
+    if user and is_new:
         msg = (
             f"Olá, {first_name}. Bem-vindo ao Assistente Financeiro.\n\n"
             "Para começar, informe suas transações em linguagem natural.\n"
             "Exemplo: 'Gastei R$ 50,00 no mercado hoje'\n\n"
             "Use /ajuda para ver todos os comandos disponíveis."
+        )
+    elif user and not is_new:
+        msg = (
+            f"Bem-vindo de volta, {first_name}.\n\n"
+            "Estou pronto para auxiliá-lo no controle financeiro.\n"
+            "Use /ajuda para ver os comandos disponíveis."
         )
     else:
         msg = "Não foi possível registrar seu acesso. Por favor, tente novamente."
@@ -88,12 +131,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
+    logger.info("[%s] Mensagem recebida: %s", telegram_id, user_message[:80])
+
+    user_token = _generate_user_token(user["id"])
 
     history = get_history(db, user["id"])
-    recent_history = history[-10:]  # ensure max 10 messages in context
+    recent_history = history[-10:]
 
     tools = build_tools(
-        user_token=context.bot_data.get("service_token", ""),
+        user_token=user_token,
         api_base_url=context.bot_data.get("api_base_url", "http://localhost:8000"),
         bot=context.bot,
         telegram_id=telegram_id,
@@ -109,8 +155,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         history_context += "[Fim do histórico]\n\n"
 
     full_message = f"{history_context}Usuário: {user_message}"
-    response = agent.run(full_message)
+    logger.info("[%s] Chamando agente Groq...", telegram_id)
+    response = await agent.arun(full_message)
     bot_reply = response.content if hasattr(response, "content") else str(response)
+
+    leaked_result = await resolve_leaked_tool_call(bot_reply, tools)
+    if leaked_result is not None:
+        logger.warning("[%s] Tool call vazada como texto pelo modelo -- executando manualmente", telegram_id)
+        bot_reply = leaked_result
+    elif is_raw_provider_error(bot_reply):
+        logger.warning("[%s] Erro bruto do provedor vazou na resposta -- usando fallback", telegram_id)
+        bot_reply = "Desculpe, tive um problema para processar sua mensagem. Pode tentar novamente?"
+
+    logger.info("[%s] Resposta: %s", telegram_id, bot_reply[:120])
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})

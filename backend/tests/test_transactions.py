@@ -7,9 +7,9 @@ from tests.conftest import *
 
 def test_create_transaction_success(client, valid_token):
     mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.single.return_value.execute.return_value.data = {
-        "group_id": "group-uuid-456"
-    }
+    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"group_id": "group-uuid-456"}
+    ]
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [{
         "id": "tx-uuid-789",
         "user_id": "user-uuid-123",

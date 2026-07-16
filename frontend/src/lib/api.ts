@@ -28,6 +28,11 @@ export type Limit = {
   percent_used: number;
 };
 
+export type GroupMember = {
+  user_id: string;
+  role: "owner" | "member";
+};
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -92,12 +97,66 @@ export async function upsertLimit(
   });
 }
 
+export async function getGroupMembers(token: string): Promise<GroupMember[]> {
+  return apiFetch<GroupMember[]>("/groups/members", token);
+}
+
+export async function createGroup(
+  token: string,
+  name: string
+): Promise<{ id: string; name: string; owner_id: string }> {
+  return apiFetch("/groups/", token, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export type TelegramLinkCode = {
+  code: string;
+  expires_at: string;
+};
+
+export async function createTelegramLinkCode(
+  token: string
+): Promise<TelegramLinkCode> {
+  return apiFetch<TelegramLinkCode>("/auth/telegram-link-code", token, {
+    method: "POST",
+  });
+}
+
 export async function sendInvite(
   token: string,
   email: string
-): Promise<{ id: string; email: string }> {
+): Promise<{ id: string; email: string; token: string }> {
   return apiFetch("/groups/invite", token, {
     method: "POST",
     body: JSON.stringify({ email }),
   });
+}
+
+export type InvitePreview = {
+  email: string;
+  group_name: string;
+};
+
+export async function getInvitePreview(
+  inviteToken: string
+): Promise<InvitePreview> {
+  const res = await fetch(`${API_URL}/groups/invite/${inviteToken}`);
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`API error ${res.status}: ${error}`);
+  }
+  return res.json() as Promise<InvitePreview>;
+}
+
+export async function acceptInvite(
+  accessToken: string,
+  inviteToken: string
+): Promise<{ message: string }> {
+  return apiFetch(
+    `/groups/accept?token=${encodeURIComponent(inviteToken)}`,
+    accessToken,
+    { method: "POST" }
+  );
 }

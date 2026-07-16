@@ -14,8 +14,14 @@ export default async function DashboardPage() {
   const month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
   const [summary, limits] = await Promise.all([
-    getSummary(token, month),
-    getLimits(token),
+    getSummary(token, month).catch(() => ({
+      month,
+      total_income: 0,
+      total_expense: 0,
+      balance: 0,
+      by_category: [],
+    })),
+    getLimits(token).catch(() => []),
   ]);
 
   return (

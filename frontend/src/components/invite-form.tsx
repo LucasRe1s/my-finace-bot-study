@@ -16,6 +16,8 @@ export function InviteForm({ token }: InviteFormProps) {
     "idle"
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,15 +25,24 @@ export function InviteForm({ token }: InviteFormProps) {
     setErrorMsg(null);
 
     try {
-      await sendInvite(token, email);
+      const invite = await sendInvite(token, email);
+      setInviteToken(invite.token);
       setStatus("success");
       setEmail("");
+      setCopied(false);
     } catch (err) {
       setStatus("error");
       setErrorMsg(
         err instanceof Error ? err.message : "Erro ao enviar convite."
       );
     }
+  }
+
+  async function handleCopyLink() {
+    if (!inviteToken) return;
+    const link = `${window.location.origin}/convite/${inviteToken}`;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
   }
 
   return (
@@ -48,8 +59,28 @@ export function InviteForm({ token }: InviteFormProps) {
           disabled={status === "loading"}
         />
       </div>
-      {status === "success" && (
-        <p className="text-sm text-green-600">Convite enviado com sucesso.</p>
+      {status === "success" && inviteToken && (
+        <div className="space-y-1 rounded-md bg-gray-50 p-3">
+          <p className="text-sm text-green-600">
+            Convite criado. Não enviamos email — copie o link e mande você
+            mesmo (WhatsApp, etc.):
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="text-xs text-gray-600 break-all">
+              {typeof window !== "undefined"
+                ? `${window.location.origin}/convite/${inviteToken}`
+                : `/convite/${inviteToken}`}
+            </code>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={handleCopyLink}
+            >
+              {copied ? "Copiado!" : "Copiar"}
+            </Button>
+          </div>
+        </div>
       )}
       {status === "error" && errorMsg && (
         <p className="text-sm text-red-600">{errorMsg}</p>
