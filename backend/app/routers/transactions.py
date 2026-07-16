@@ -11,6 +11,19 @@ from ..models.transaction import Transaction, TransactionCreate
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+def _ensure_user_profile(db: Client, user: dict) -> None:
+    """Cria/atualiza a linha em public.users para o usuário autenticado via Supabase Auth.
+
+    A migration 002 removeu o FK de public.users para auth.users (para o bot
+    criar usuarios com UUID proprio), entao usuarios web nunca ganham essa linha
+    automaticamente -- e groups/group_members referenciam public.users(id) via
+    FK. Sem isso, criar grupo ou aceitar convite falha com violacao de FK."""
+    db.table("users").upsert(
+        {"id": user["id"], "name": user.get("email", "")},
+        on_conflict="id",
+    ).execute()
+
+
 def _get_user_group(db: Client, user_id: str) -> str:
     result = (
         db.table("group_members")
