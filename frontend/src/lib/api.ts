@@ -28,6 +28,11 @@ export type Limit = {
   percent_used: number;
 };
 
+export type GroupMember = {
+  user_id: string;
+  role: "owner" | "member";
+};
+
 export function formatBRL(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -90,6 +95,10 @@ export async function upsertLimit(
     method: "POST",
     body: JSON.stringify({ category, monthly_limit }),
   });
+}
+
+export async function getGroupMembers(token: string): Promise<GroupMember[]> {
+  return apiFetch<GroupMember[]>("/groups/members", token);
 }
 
 export async function sendInvite(

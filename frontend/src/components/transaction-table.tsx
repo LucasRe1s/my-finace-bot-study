@@ -26,7 +26,7 @@ export function TransactionTable({ transactions }: TransactionTableProps) {
   if (transactions.length === 0) {
     return (
       <p className="text-sm text-gray-500 py-4 text-center">
-        Nenhuma transacao encontrada.
+        Nenhuma transação encontrada.
       </p>
     );
   }
@@ -36,7 +36,7 @@ export function TransactionTable({ transactions }: TransactionTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead>Data</TableHead>
-          <TableHead>Descricao</TableHead>
+          <TableHead>Descrição</TableHead>
           <TableHead>Categoria</TableHead>
           <TableHead>Tipo</TableHead>
           <TableHead className="text-right">Valor</TableHead>
