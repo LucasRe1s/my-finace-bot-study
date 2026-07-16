@@ -20,7 +20,7 @@ async def create_group(
     data: GroupCreate,
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     result = db.table("groups").insert({"name": data.name, "owner_id": user["id"]}).execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Erro ao criar grupo. Tente novamente.")
@@ -34,7 +34,7 @@ async def invite_member(
     data: InviteCreate,
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     result = db.table("invites").insert({
         "group_id": group_id,
@@ -46,12 +46,25 @@ async def invite_member(
     return result.data[0]
 
 
+@router.get("/members")
+async def list_members(
+    user: dict = Depends(get_current_user),
+):
+    db = get_supabase(user["token"])
+    try:
+        group_id = _get_user_group(db, user["id"])
+    except HTTPException:
+        return []
+    result = db.table("group_members").select("user_id, role").eq("group_id", group_id).execute()
+    return result.data or []
+
+
 @router.post("/accept")
 async def accept_invite(
     token: str = Query(...),
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     invite = db.table("invites").select("*").eq("token", token).is_("accepted_at", "null").single().execute()
     if not invite.data:
         raise HTTPException(status_code=404, detail="Convite inválido ou já utilizado")

@@ -34,7 +34,7 @@ async def upsert_limit(
     data: LimitCreate,
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     result = (
         db.table("category_limits")
@@ -58,7 +58,7 @@ async def upsert_limit(
 async def list_limits(
     user: dict = Depends(get_current_user),
 ):
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     result = db.table("category_limits").select("*").eq("group_id", group_id).execute()
     limits = []

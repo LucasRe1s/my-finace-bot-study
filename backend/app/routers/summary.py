@@ -25,7 +25,7 @@ async def get_summary(
     first_day = f"{year}-{mon}-01"
     last_day = f"{year}-{mon}-{calendar.monthrange(int(year), int(mon))[1]}"
 
-    db = get_supabase()
+    db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
     result = (
         db.table("transactions")

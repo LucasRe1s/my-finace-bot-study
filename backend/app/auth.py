@@ -31,7 +31,7 @@ async def get_current_user(
             algorithms=["HS256"],
             audience="authenticated",
         )
-        return {"id": payload["sub"], "email": payload.get("email", "")}
+        return {"id": payload["sub"], "email": payload.get("email", ""), "token": token}
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

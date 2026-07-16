@@ -23,9 +23,9 @@ def test_create_group(client, valid_token):
 
 def test_send_invite(client, valid_token):
     mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.single.return_value.execute.return_value.data = {
-        "group_id": "group-uuid-456"
-    }
+    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"group_id": "group-uuid-456"}
+    ]
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [{
         "id": "invite-uuid",
         "group_id": "group-uuid-456",
@@ -62,6 +62,41 @@ def test_accept_invite_valid_token(client, valid_token):
 
     assert response.status_code == 200
     assert response.json()["message"] == "Convite aceito com sucesso"
+
+
+def test_list_members(client, valid_token):
+    mock_db = MagicMock()
+    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"group_id": "group-uuid-456"}
+    ]
+    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"user_id": "user-uuid-123", "role": "owner"},
+        {"user_id": "user-uuid-456", "role": "member"},
+    ]
+
+    with patch("app.routers.groups.get_supabase", return_value=mock_db):
+        response = client.get(
+            "/groups/members",
+            headers={"Authorization": f"Bearer {valid_token}"},
+        )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert response.json()[0]["role"] == "owner"
+
+
+def test_list_members_no_group(client, valid_token):
+    mock_db = MagicMock()
+    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+
+    with patch("app.routers.groups.get_supabase", return_value=mock_db):
+        response = client.get(
+            "/groups/members",
+            headers={"Authorization": f"Bearer {valid_token}"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_accept_invite_invalid_token(client, valid_token):
