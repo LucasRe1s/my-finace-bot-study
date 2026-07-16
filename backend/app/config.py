@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str
     telegram_bot_token: str
     openai_api_key: str = ""
+    groq_api_key: str = ""
 
     model_config = {"env_file": ".env"}
 

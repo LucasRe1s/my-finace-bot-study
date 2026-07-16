@@ -1,28 +1,42 @@
 # -*- coding: utf-8 -*-
+import jwt
+import logging
+from datetime import datetime, timezone, timedelta
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+logger = logging.getLogger("bot")
+
 from agent.bot import create_agent
 from agent.history import get_history, save_history
 from agent.tools import build_tools
+from app.config import settings
 from app.database import get_supabase
 
 
+def _generate_user_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "aud": "authenticated",
+        "role": "authenticated",
+        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
+    }
+    return jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+
+
 async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[dict | None, bool]:
-    try:
-        result = (
-            db.table("users")
-            .select("*")
-            .eq("telegram_id", telegram_id)
-            .single()
-            .execute()
-        )
-        if result.data:
-            return result.data, False  # existing user
-    except Exception:
-        pass
-    # User not found — create it
+    result = (
+        db.table("users")
+        .select("*")
+        .eq("telegram_id", telegram_id)
+        .maybe_single()
+        .execute()
+    )
+    if result and result.data:
+        return result.data, False
+    logger.info("Novo usuário Telegram %s (%s) — criando registro", telegram_id, first_name)
     insert_result = (
         db.table("users")
         .insert({"telegram_id": telegram_id, "name": first_name})
@@ -30,7 +44,7 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[di
     )
     if not insert_result.data:
         return None, False
-    return insert_result.data[0], True  # new user
+    return insert_result.data[0], True
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -40,18 +54,18 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     user, is_new = await _get_or_create_user(db, telegram_id, first_name)
 
-    if user and not is_new:
-        msg = (
-            f"Bem-vindo de volta, {first_name}.\n\n"
-            "Estou pronto para auxiliá-lo no controle financeiro.\n"
-            "Use /ajuda para ver os comandos disponíveis."
-        )
-    elif user and is_new:
+    if user and is_new:
         msg = (
             f"Olá, {first_name}. Bem-vindo ao Assistente Financeiro.\n\n"
             "Para começar, informe suas transações em linguagem natural.\n"
             "Exemplo: 'Gastei R$ 50,00 no mercado hoje'\n\n"
             "Use /ajuda para ver todos os comandos disponíveis."
+        )
+    elif user and not is_new:
+        msg = (
+            f"Bem-vindo de volta, {first_name}.\n\n"
+            "Estou pronto para auxiliá-lo no controle financeiro.\n"
+            "Use /ajuda para ver os comandos disponíveis."
         )
     else:
         msg = "Não foi possível registrar seu acesso. Por favor, tente novamente."
@@ -88,12 +102,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     await update.message.chat.send_action(ChatAction.TYPING)
+    logger.info("[%s] Mensagem recebida: %s", telegram_id, user_message[:80])
+
+    user_token = _generate_user_token(user["id"])
 
     history = get_history(db, user["id"])
-    recent_history = history[-10:]  # ensure max 10 messages in context
+    recent_history = history[-10:]
 
     tools = build_tools(
-        user_token=context.bot_data.get("service_token", ""),
+        user_token=user_token,
         api_base_url=context.bot_data.get("api_base_url", "http://localhost:8000"),
         bot=context.bot,
         telegram_id=telegram_id,
@@ -109,8 +126,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         history_context += "[Fim do histórico]\n\n"
 
     full_message = f"{history_context}Usuário: {user_message}"
-    response = agent.run(full_message)
+    logger.info("[%s] Chamando agente Groq...", telegram_id)
+    response = await agent.arun(full_message)
     bot_reply = response.content if hasattr(response, "content") else str(response)
+    logger.info("[%s] Resposta: %s", telegram_id, bot_reply[:120])
 
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})

@@ -37,12 +37,12 @@ async def test_handle_message_calls_agent():
     update.message.chat.send_action = AsyncMock()
 
     context = MagicMock()
-    context.bot_data = {"service_token": "", "api_base_url": "http://localhost:8000"}
+    context.bot_data = {"api_base_url": "http://localhost:8000"}
 
     mock_agent = MagicMock()
     mock_response = MagicMock()
     mock_response.content = "Resumo financeiro de junho..."
-    mock_agent.run = MagicMock(return_value=mock_response)
+    mock_agent.arun = AsyncMock(return_value=mock_response)
 
     mock_db = MagicMock()
     mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {

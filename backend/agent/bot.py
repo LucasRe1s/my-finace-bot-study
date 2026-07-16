@@ -1,13 +1,13 @@
+import os
 from agno.agent import Agent
-from agno.models.anthropic import Claude
+from agno.models.groq import Groq
 
 from .prompts import SYSTEM_PROMPT
 
 
 def create_agent(tools: list) -> Agent:
-    """Cria instância do agente Agno com as tools fornecidas."""
     return Agent(
-        model=Claude(id="claude-haiku-4-5-20251001"),
+        model=Groq(id="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY")),
         description="Assistente Financeiro formal para controle financeiro pessoal",
         instructions=[SYSTEM_PROMPT],
         tools=tools,

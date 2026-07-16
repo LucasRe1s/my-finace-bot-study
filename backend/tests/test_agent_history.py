@@ -5,7 +5,7 @@ from agent.history import get_history, save_history
 
 def test_get_history_empty():
     mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = None
+    mock_db.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = None
     result = get_history(mock_db, "user-123")
     assert result == []
 
@@ -16,7 +16,7 @@ def test_get_history_existing():
         {"role": "user", "content": "Gastei 50 reais"},
         {"role": "assistant", "content": "Confirmo..."},
     ]
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
+    mock_db.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute.return_value.data = {
         "messages": messages
     }
     result = get_history(mock_db, "user-123")

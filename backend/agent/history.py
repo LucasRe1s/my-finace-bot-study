@@ -10,10 +10,10 @@ def get_history(db: Client, user_id: str) -> list[dict]:
         db.table("conversations")
         .select("messages")
         .eq("user_id", user_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data:
+    if not result or not result.data:
         return []
     return result.data.get("messages", [])
 
