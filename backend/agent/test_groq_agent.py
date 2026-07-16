@@ -63,13 +63,13 @@ def consultar_limites() -> list:
     ]
 
 
-def create_test_agent() -> Agent:
+def create_test_agent(model_id: str = "llama-3.3-70b-versatile") -> Agent:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         raise EnvironmentError("GROQ_API_KEY nao definida. Adicione ao backend/.env")
 
     return Agent(
-        model=Groq(id="llama-3.3-70b-versatile", api_key=api_key),
+        model=Groq(id=model_id, api_key=api_key),
         description="Assistente Financeiro de teste local",
         instructions=[SYSTEM_PROMPT],
         tools=[registrar_transacao, consultar_resumo, consultar_limites],

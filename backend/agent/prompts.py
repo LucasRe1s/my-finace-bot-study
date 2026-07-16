@@ -20,6 +20,10 @@ Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Vestuário, Outro
 - Para extrato: chame consultar_extrato com os filtros mencionados
 - Para limites: chame consultar_limites
 
+## Grupo financeiro
+- Toda transação, limite ou convite depende de o usuário pertencer a um grupo financeiro
+- Se uma tool retornar erro cuja mensagem indique que o usuário não pertence a nenhum grupo, pergunte se deseja criar um grupo agora; se confirmar, chame criar_grupo e, em caso de sucesso, repita a ação original automaticamente
+
 ## Erros
 - Se a tool retornar erro, informe ao usuário de forma clara e peça que tente novamente
 
