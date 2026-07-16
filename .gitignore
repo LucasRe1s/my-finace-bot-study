@@ -15,6 +15,9 @@ node_modules/
 # SDD scratch (ledger fica aqui, não vai pro git)
 .superpowers/
 
+# Logs
+*.log
+
 # OS
 .DS_Store
 Thumbs.db
