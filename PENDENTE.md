@@ -1,6 +1,6 @@
 # O que falta — my-finance-bot
 
-> Atualizado em 26/06/2026. Backend e bot funcionando. Frontend com 401 em investigação.
+> Atualizado em 16/07/2026. Backend, bot e dashboard funcionando, incluindo criacao de grupo, convite por link e vinculo de conta Telegram.
 
 ---
 
@@ -13,26 +13,26 @@
 | P3 — Dashboard Next.js | T1 a T6 | Completo |
 | Agente Groq | Troca Claude Haiku por Groq llama-3.3-70b | Completo |
 | Auth bot sem formulario | JWT por usuario, bot_users via tabela users | Completo |
-| Migrations Supabase | 001 schema, 002 bot auth, 003 grants anon | Completo |
+| Migrations Supabase | 001 a 010 (schema, bot auth, grants, vinculo Telegram) | Completo |
+| AUTH-01 | 401 no dashboard web — validacao via JWKS (ES256) | Completo |
+| Criar grupo | Endpoint, tool do bot e tela web | Completo |
+| Convite sem email | Link copiavel + pagina /convite/[token] (signup + accept) | Completo |
+| Vinculo Telegram | Codigo de uso unico, migra dados de identidade so-bot pre-existente | Completo |
+| Blindagem do agente | Detecta vazamento de tool-call e erro bruto do provedor (Groq) | Completo |
 
 ---
 
 ## Pendente — Em andamento
 
-### AUTH-01: 401 no dashboard web (token Supabase x backend)
+### SEC-01: policies de RLS permissivas para `anon` (ver SECURITY.md)
 
-**Problema:** O token emitido pelo Supabase Auth nao passa na validacao do backend (`jwt.decode` com HS256 + secret base64-decoded).
-
-**Hipoteses em investigacao:**
-- Supabase pode estar usando RS256 (assimetrico) em projetos novos
-- `aud` claim pode ser diferente de `"authenticated"`
-- Secret pode precisar de tratamento diferente
-
-**Proximos passos:**
-1. Inspecionar token real via `/debug/token` endpoint
-2. Verificar `alg` e `aud` do token
-3. Ajustar `auth.py` conforme necessario
-4. Remover endpoint `/debug/token` apos correcao
+O bot precisa operar sem sessao de usuario Supabase, e isso levou a policies
+`USING (true)` para o role `anon` em varias tabelas (users, conversations,
+group_members, transactions, invites, groups, telegram_link_codes). Como a
+anon key e publica (fica no bundle do frontend), qualquer pessoa com ela
+consegue ler/escrever esses dados direto na API do Supabase, sem passar pelo
+backend. Detalhe completo e recomendacao de correcao (service_role key para
+operacoes do bot) em [`SECURITY.md`](SECURITY.md).
 
 ---
 
@@ -65,11 +65,13 @@ Campo existe em `config.py` mas nao e usado. Remover ou documentar que e legado.
 
 | Origem | Descricao |
 |---|---|
-| P1-T2 | `invites_accept_update` usa `USING(true)` — qualquer autenticado aceita qualquer convite |
 | P1-T4 | `InviteCreate.email` usa `str` em vez de `EmailStr` |
 | P1-T5 | `?month=` sem validacao de formato — ValueError vira 500 |
 | P3-T2 | `getSession()` no servidor — trocar por `getUser()` |
 | P3-T2 | Auth callback sem redirect quando `code` ausente |
 | P3-T6 | `family/page.tsx` exibe user_id truncado — melhorar com tabela profiles |
-| BOT-01 | `users_bot_read` policy expoe todos os usuarios para role anon — usar service_role em producao |
-| DEBUG-01 | Remover `/debug/token` endpoint antes do deploy |
+| BOT-01 | Ver SEC-01 acima — escopo cresceu para varias tabelas, nao so `users` |
+| ~~DEBUG-01~~ | ~~Remover `/debug/token` endpoint antes do deploy~~ — feito |
+| SEC-02 (era P1-T2) | `invites_accept_update` usa `USING(true)` — qualquer autenticado aceita qualquer convite |
+| SEC-03 | Senha minima de 6 caracteres no signup via convite |
+| CORS-01 | `allow_origins=["*"]` no backend — restringir a origem do frontend em producao |
