@@ -42,18 +42,18 @@ async def test_start_command_with_link_code_links_account():
     service_db = MagicMock()
     with (
         patch("tgbot.handlers.get_service_supabase", return_value=service_db),
-        patch("tgbot.handlers.link_telegram_account") as link,
+        patch("tgbot.handlers.link_identity") as link,
     ):
         await handle_start(update, context)
 
-    link.assert_called_once_with(service_db, "ABC12345", 123456789)
+    link.assert_called_once_with(service_db, "ABC12345", "telegram", "123456789")
     reply = update.message.reply_text.call_args[0][0]
     assert "vinculado" in reply.lower()
 
 
 @pytest.mark.asyncio
 async def test_start_command_with_invalid_code_shows_code_error():
-    from app.services.telegram_link import InvalidLinkCode
+    from app.services.identities import InvalidLinkCode
     from tgbot.handlers import handle_start
 
     update = MagicMock()
@@ -65,7 +65,7 @@ async def test_start_command_with_invalid_code_shows_code_error():
 
     with (
         patch("tgbot.handlers.get_service_supabase", return_value=MagicMock()),
-        patch("tgbot.handlers.link_telegram_account", side_effect=InvalidLinkCode()),
+        patch("tgbot.handlers.link_identity", side_effect=InvalidLinkCode()),
     ):
         await handle_start(update, context)
 
@@ -86,7 +86,7 @@ async def test_start_command_with_unexpected_error_shows_generic_retry():
 
     with (
         patch("tgbot.handlers.get_service_supabase", return_value=MagicMock()),
-        patch("tgbot.handlers.link_telegram_account", side_effect=RuntimeError("db fora")),
+        patch("tgbot.handlers.link_identity", side_effect=RuntimeError("db fora")),
     ):
         await handle_start(update, context)
 

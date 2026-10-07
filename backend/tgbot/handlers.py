@@ -13,7 +13,7 @@ from agent.history import get_history, save_history
 from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
 from app.config import settings
 from app.database import get_service_supabase
-from app.services.telegram_link import InvalidLinkCode, link_telegram_account
+from app.services.identities import InvalidLinkCode, LinkConflict, link_identity
 
 
 def _generate_user_token(user_id: str) -> str:
@@ -50,9 +50,14 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[di
 
 def _link_telegram_account(telegram_id: int, code: str) -> str:
     try:
-        link_telegram_account(get_service_supabase(), code, telegram_id)
+        link_identity(get_service_supabase(), code, "telegram", str(telegram_id))
     except InvalidLinkCode:
         return "Não foi possível vincular sua conta: código inválido ou expirado."
+    except LinkConflict:
+        return (
+            "Não foi possível vincular: esta conta e a conta do painel já participam de grupos "
+            "financeiros diferentes. Saia de um dos grupos e gere um novo código."
+        )
     except Exception:
         logger.exception("Falha inesperada ao vincular telegram_id=%s", telegram_id)
         return "Não foi possível vincular sua conta agora. Tente novamente em instantes."
