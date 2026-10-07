@@ -1,20 +1,20 @@
 import calendar
 from datetime import date
-from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from supabase import Client
 
 from ..auth import get_current_user
 from ..database import get_supabase
 from ..routers.transactions import _get_user_group
+from .params import Month
 
 router = APIRouter(prefix="/summary", tags=["summary"])
 
 
 @router.get("/")
 async def get_summary(
-    month: Optional[str] = Query(None, description="YYYY-MM, padrão: mês atual"),
+    month: Month = None,
     user: dict = Depends(get_current_user),
 ):
     if not month:

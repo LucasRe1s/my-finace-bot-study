@@ -8,6 +8,7 @@ from supabase import Client
 from ..auth import get_current_user
 from ..database import get_service_supabase, get_supabase
 from ..models.transaction import Transaction, TransactionCreate
+from .params import Month
 from ..services.membership import find_user_group as _find_user_group, names_by_id
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -63,7 +64,7 @@ async def create_transaction(
 
 @router.get("/", response_model=list[Transaction])
 async def list_transactions(
-    month: Optional[str] = Query(None, description="Formato YYYY-MM, ex: 2026-06"),
+    month: Month = None,
     category: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     user: dict = Depends(get_current_user),
