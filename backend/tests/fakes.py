@@ -105,8 +105,10 @@ class _Query:
             return _Result([dict(row) for row in matched])
 
         if self._op == "upsert":
-            key = self._on_conflict
-            existing = next((row for row in rows if row.get(key) == self._payload.get(key)), None)
+            keys = [k.strip() for k in self._on_conflict.split(",")]
+            existing = next(
+                (row for row in rows if all(row.get(k) == self._payload.get(k) for k in keys)), None
+            )
             if existing:
                 existing.update(self._payload)
                 return _Result([dict(existing)])
