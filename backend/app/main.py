@@ -3,6 +3,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from .config import settings
 from .routers import transactions, summary, limits, groups, auth_link
 from tgbot.webhook import router as telegram_router, telegram_lifespan
 
@@ -17,7 +18,7 @@ app = FastAPI(title="my-finance-bot API", version="0.1.0", lifespan=telegram_lif
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
