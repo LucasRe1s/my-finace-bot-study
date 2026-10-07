@@ -74,8 +74,9 @@ async def list_members(
         group_id = _get_user_group(db, user["id"])
     except HTTPException:
         return []
-    result = db.table("group_members").select("user_id, role").eq("group_id", group_id).execute()
-    return result.data or []
+    rows = db.table("group_members").select("user_id, role").eq("group_id", group_id).execute().data or []
+    names = names_by_id(get_service_supabase(), [r["user_id"] for r in rows])
+    return [{**r, "name": names.get(r["user_id"], "")} for r in rows]
 
 
 @router.post("/accept")

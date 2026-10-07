@@ -199,3 +199,20 @@ async def test_registrar_transacao_appends_limit_alert_to_sink():
 
     assert len(alerts) == 1
     assert "95% do limite mensal de Lazer" in alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_consultar_extrato_shows_author():
+    from fastapi import FastAPI
+
+    api = FastAPI()
+
+    @api.get("/transactions/")
+    async def listar():
+        return [{"amount": 50.0, "type": "expense", "category": "Lazer", "description": "Cinema",
+                 "date": "2026-10-07", "user_name": "Bia"}]
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api))
+    extrato = next(t for t in tools if t.__name__ == "consultar_extrato")
+
+    assert "Cinema | 2026-10-07 | Bia" in await extrato()

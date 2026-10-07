@@ -46,27 +46,6 @@ def test_send_invite(client, valid_token):
     assert response.json()["email"] == "familiar@example.com"
 
 
-def test_list_members(client, valid_token):
-    mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
-        {"group_id": "group-uuid-456"}
-    ]
-    mock_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-        {"user_id": "user-uuid-123", "role": "owner"},
-        {"user_id": "user-uuid-456", "role": "member"},
-    ]
-
-    with patch("app.routers.groups.get_supabase", return_value=mock_db):
-        response = client.get(
-            "/groups/members",
-            headers={"Authorization": f"Bearer {valid_token}"},
-        )
-
-    assert response.status_code == 200
-    assert len(response.json()) == 2
-    assert response.json()[0]["role"] == "owner"
-
-
 def test_list_members_no_group(client, valid_token):
     mock_db = MagicMock()
     mock_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
@@ -175,3 +154,28 @@ def test_send_invite_rejects_invalid_email(client, valid_token):
         "/groups/invite", json={"email": "nao-e-email"}, headers={"Authorization": f"Bearer {valid_token}"}
     )
     assert response.status_code == 422
+
+
+def test_list_members_with_names(client, valid_token):
+    user_db = MagicMock()
+    user_db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"group_id": "group-uuid-456"}
+    ]
+    user_db.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"user_id": "user-uuid-123", "role": "owner"},
+        {"user_id": "user-uuid-456", "role": "member"},
+    ]
+    service_db = FakeSupabase()
+    service_db.tables["users"] = [{"id": "user-uuid-123", "name": "Ana"}, {"id": "user-uuid-456", "name": "Bia"}]
+
+    with (
+        patch("app.routers.groups.get_supabase", return_value=user_db),
+        patch("app.routers.groups.get_service_supabase", return_value=service_db),
+    ):
+        response = client.get("/groups/members", headers={"Authorization": f"Bearer {valid_token}"})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"user_id": "user-uuid-123", "role": "owner", "name": "Ana"},
+        {"user_id": "user-uuid-456", "role": "member", "name": "Bia"},
+    ]

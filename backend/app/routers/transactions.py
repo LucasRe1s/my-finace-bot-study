@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from supabase import Client
 
 from ..auth import get_current_user
-from ..database import get_supabase
+from ..database import get_service_supabase, get_supabase
 from ..models.transaction import Transaction, TransactionCreate
-from ..services.membership import find_user_group as _find_user_group
+from ..services.membership import find_user_group as _find_user_group, names_by_id
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -18,10 +18,12 @@ def _ensure_user_profile(db: Client, user: dict) -> None:
     A migration 002 removeu o FK de public.users para auth.users (para o bot
     criar usuarios com UUID proprio), entao usuarios web nunca ganham essa linha
     automaticamente -- e groups/group_members referenciam public.users(id) via
-    FK. Sem isso, criar grupo ou aceitar convite falha com violacao de FK."""
+    FK. Sem isso, criar grupo ou aceitar convite falha com violacao de FK.
+    Nao sobrescreve o nome de quem ja existe."""
     db.table("users").upsert(
         {"id": user["id"], "name": user.get("email", "")},
         on_conflict="id",
+        ignore_duplicates=True,
     ).execute()
 
 
@@ -81,5 +83,6 @@ async def list_transactions(
     if type:
         query = query.eq("type", type)
 
-    result = query.order("date", desc=True).execute()
-    return result.data
+    rows = query.order("date", desc=True).execute().data or []
+    names = names_by_id(get_service_supabase(), [t.get("user_id") for t in rows])
+    return [{**t, "user_name": names.get(t.get("user_id"))} for t in rows]

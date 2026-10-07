@@ -161,7 +161,8 @@ def build_tools(
         lines = [f"Extrato -- {len(transactions)} transação(ões):"]
         for t in transactions[:20]:
             tipo = "+" if t["type"] == "income" else "-"
-            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}")
+            autor = f" | {t['user_name']}" if t.get("user_name") else ""
+            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}{autor}")
         if len(transactions) > 20:
             lines.append(f"  ... e mais {len(transactions) - 20} transação(ões).")
         return "\n".join(lines)

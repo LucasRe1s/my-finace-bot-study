@@ -161,3 +161,22 @@ def test_link_to_same_account_is_noop(db):
     link_identity(db, "ABC12345", "telegram", "555")
 
     assert len(db.tables["user_identities"]) == 1
+
+
+def test_bot_name_replaces_email_placeholder(db):
+    db.tables["users"] = [{"id": "u1", "name": "ana@x.com"}]
+    _identity(db, "u1")
+
+    user, _ = get_or_create_user(db, "telegram", "555", "Ana")
+
+    assert user["name"] == "Ana"
+    assert db.tables["users"][0]["name"] == "Ana"
+
+
+def test_bot_name_does_not_override_real_name(db):
+    db.tables["users"] = [{"id": "u1", "name": "Ana Paula"}]
+    _identity(db, "u1")
+
+    user, _ = get_or_create_user(db, "telegram", "555", "Aninha")
+
+    assert user["name"] == "Ana Paula"

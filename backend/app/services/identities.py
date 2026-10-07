@@ -51,6 +51,11 @@ def _adopt_legacy_telegram_user(db: Client, external_id: str) -> dict | None:
 def get_or_create_user(db: Client, channel: str, external_id: str, display_name: str) -> tuple[dict, bool]:
     user = find_user_by_identity(db, channel, external_id)
     if user:
+        # Conta web nasce com o email como nome; o nome do canal e melhor.
+        current = user.get("name") or ""
+        if display_name and (not current or "@" in current):
+            db.table("users").update({"name": display_name}).eq("id", user["id"]).execute()
+            user = {**user, "name": display_name}
         return user, False
 
     created = db.table("users").insert({"name": display_name}).execute().data[0]
