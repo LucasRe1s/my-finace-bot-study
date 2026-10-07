@@ -40,6 +40,7 @@ Design original em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md). R
 - Vincular a conta do Telegram a uma conta web já existente via `/start <código>`
 - `/convidar`: gera um link `t.me/<bot>?start=join_<token>` (uso único, 7 dias); quem abre entra no grupo sem cadastro web
 - Desfazer o último lançamento próprio feito nos últimos 10 minutos
+- Funciona também dentro de um grupo do Telegram (ver abaixo)
 - Extrato mostra quem lançou cada transação
 
 **Pelo dashboard web:**
@@ -127,6 +128,25 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=
 ```
 
+## Usando em um grupo do Telegram
+
+1. Adicione o bot ao grupo da família. Ele manda as instruções.
+2. O **dono do grupo financeiro** envia `/vincular` no grupo. Cada grupo financeiro pode ter um
+   chat vinculado; `/desvincular` desfaz (os dados continuam salvos).
+3. Para falar com o bot no grupo, use uma destas formas:
+   - responder a uma mensagem do bot;
+   - `/f <mensagem>`, por exemplo `/f gastei R$ 50 no mercado`;
+   - mencionar o bot: `@<bot> gastei R$ 50 no mercado`.
+4. Quem ainda não participa do grupo financeiro recebe um botão "Aprovar"; só o dono consegue aprovar.
+
+Cada pessoa tem a própria conversa com o bot dentro do grupo: o "sim" de uma pessoa não confirma
+o lançamento de outra. Alertas de limite aparecem no grupo.
+
+**Privacy mode.** Por padrão o Telegram só entrega ao bot comandos e respostas às mensagens dele;
+a documentação não garante a entrega de menções. Para a menção funcionar sempre, desligue o
+privacy mode no @BotFather (`/setprivacy` > Disable). O bot continua ignorando o que não é
+dirigido a ele: conversas da família não passam pelo LLM.
+
 ## Rodando localmente
 
 ```bash
@@ -159,9 +179,9 @@ Ordem (a migration 011 só funciona com o código novo no ar, porque o código a
    `NEXT_PUBLIC_API_URL` (URL do Render) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
 5. No Render, `CORS_ORIGINS` com o domínio da Vercel.
 
-Migrations novas depois do primeiro deploy: a `012_user_identities.sql` e a
-`013_invites_expiry_optional_email.sql` só adicionam, então podem ser aplicadas antes do deploy
-do código que as usa. Usuários antigos (só com `users.telegram_id`)
+Migrations novas depois do primeiro deploy: `012_user_identities.sql`,
+`013_invites_expiry_optional_email.sql` e `014_chat_bindings.sql` só adicionam, então podem ser
+aplicadas antes do deploy do código que as usa. Usuários antigos (só com `users.telegram_id`)
 são adotados automaticamente na primeira mensagem.
 
 No plano free o serviço hiberna sem tráfego; a primeira mensagem depois disso acorda o serviço
