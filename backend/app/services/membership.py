@@ -19,3 +19,8 @@ def names_by_id(db: Client, user_ids: list[str | None]) -> dict[str, str]:
 def group_name(db: Client, group_id: str) -> str:
     result = db.table("groups").select("name").eq("id", group_id).maybe_single().execute()
     return result.data["name"] if result and result.data else "grupo financeiro"
+
+
+def get_group(db: Client, group_id: str) -> dict | None:
+    result = db.table("groups").select("*").eq("id", group_id).maybe_single().execute()
+    return result.data if result else None

@@ -61,3 +61,16 @@ def test_invites_email_optional_and_expiring():
     sql = _sql("013_invites_expiry_optional_email.sql")
     assert "ALTER COLUMN email DROP NOT NULL" in sql
     assert re.search(r"ADD COLUMN expires_at TIMESTAMPTZ NOT NULL DEFAULT \(NOW\(\) \+ INTERVAL '7 days'\)", sql)
+
+
+def test_chat_bindings_and_group_history():
+    sql = _sql("014_chat_bindings.sql")
+    assert "CREATE TABLE public.chat_bindings" in sql
+    assert "UNIQUE (channel, chat_id)" in sql
+    assert "UNIQUE (group_id)" in sql
+    assert "CREATE TABLE public.group_chat_history" in sql
+    assert "UNIQUE (user_id, chat_key)" in sql
+    for table in ("chat_bindings", "group_chat_history"):
+        assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;" in sql
+        assert f"REVOKE ALL ON public.{table} FROM anon;" in sql
+    assert not re.search(r"\bTO\s+anon\b", sql)

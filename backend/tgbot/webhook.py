@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from telegram import Update
 
 from app.config import settings
-from .runner import build_app
+from .runner import ALLOWED_UPDATES, build_app
 
 logger = logging.getLogger("bot")
 
@@ -59,7 +59,7 @@ async def telegram_lifespan(api: FastAPI):
     await ptb.bot.set_webhook(
         url=url,
         secret_token=settings.telegram_webhook_secret,
-        allowed_updates=["message"],
+        allowed_updates=ALLOWED_UPDATES,
     )
     await ptb.start()
     api.state.telegram_app = ptb

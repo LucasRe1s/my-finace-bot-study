@@ -28,7 +28,7 @@ Cada fase gera software funcional e tem seu próprio plano de implementação em
 | 1 | Produção: segurança, bot dentro da API via webhook, deploy | `2026-10-07-plan-4-producao.md` |
 | 2 | Núcleo agnóstico de canal + identidades por canal | `2026-10-07-plan-5-nucleo-canal.md` |
 | 3 | Família no privado: convite pelo Telegram, nomes, desfazer | `2026-10-07-plan-6-familia-privado.md` |
-| 4 | Bot em grupo do Telegram | a escrever |
+| 4 | Bot em grupo do Telegram | `2026-10-07-plan-7-grupo-telegram.md` |
 | 5 | Adaptador WhatsApp | a escrever |
 | 6 | Débitos técnicos restantes | a escrever |
 
@@ -180,6 +180,16 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 
 ---
 
+### Ajustes feitos na implementação
+
+- Um chat por grupo financeiro (`UNIQUE(group_id)`).
+- A documentação do Telegram não garante entrega de menções com privacy mode ligado; por isso, além de menção e resposta, existe `/f <mensagem>`.
+- Aprovação sem tabela de pedidos: o botão carrega `approve:<user_id>` e o backend confere que quem clicou é o dono.
+- Histórico de grupo em `group_chat_history` (tabela nova), para não mudar a `UNIQUE(user_id)` de `conversations` no meio do deploy.
+- Quando o grupo vira supergrupo, o vínculo é movido para o novo `chat_id`.
+
+---
+
 ## Fase 5: WhatsApp
 
 - Decisão de provedor no início da fase (Cloud API oficial da Meta ou BSP), conferindo a
@@ -204,5 +214,4 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 
 ## Decisões em aberto (resolver no início de cada fase)
 
-- Fase 4: limite de quantos chats podem ser vinculados a um grupo financeiro (proposta: 1).
 - Fase 5: provedor do WhatsApp e se vale manter o Telegram em paralelo.
