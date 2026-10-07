@@ -8,6 +8,8 @@ export type Transaction = {
   description: string;
   date: string;
   created_at: string;
+  user_id: string | null;
+  user_name: string | null;
 };
 
 export type CategorySummary = { category: string; total: number };
@@ -31,6 +33,7 @@ export type Limit = {
 export type GroupMember = {
   user_id: string;
   role: "owner" | "member";
+  name: string;
 };
 
 export function formatBRL(value: number): string {
@@ -148,7 +151,7 @@ export async function createTelegramLinkCode(
 export async function sendInvite(
   token: string,
   email: string
-): Promise<{ id: string; email: string; token: string }> {
+): Promise<{ id: string; email: string | null; token: string }> {
   return apiFetch("/groups/invite", token, {
     method: "POST",
     body: JSON.stringify({ email }),
@@ -156,7 +159,8 @@ export async function sendInvite(
 }
 
 export type InvitePreview = {
-  email: string;
+  // null quando o convite foi gerado pelo bot (sem email)
+  email: string | null;
   group_name: string;
 };
 
