@@ -10,6 +10,8 @@ type TelegramLinkCodeProps = {
 
 export function TelegramLinkCodeCard({ token }: TelegramLinkCodeProps) {
   const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "";
+  // Opcional: so mostra o botao do WhatsApp se o numero do bot estiver configurado.
+  const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "";
   const [code, setCode] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,9 +40,9 @@ export function TelegramLinkCodeCard({ token }: TelegramLinkCodeProps) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-500">
-        Vincule seu Telegram à sua conta para registrar transações por lá e ver
-        tudo refletido aqui no painel. Gere um código e abra o link no
-        Telegram em até 10 minutos.
+        Vincule seu Telegram{whatsappNumber ? " ou WhatsApp" : ""} à sua conta
+        para registrar transações por lá e ver tudo refletido aqui no painel.
+        Gere um código e use-o em até 10 minutos.
       </p>
 
       {status === "error" && errorMsg && (
@@ -68,6 +70,16 @@ export function TelegramLinkCodeCard({ token }: TelegramLinkCodeProps) {
           >
             <Button size="sm">Abrir no Telegram e vincular</Button>
           </a>
+          {whatsappNumber && (
+            <a
+              href={`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`/start ${code}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2"
+            >
+              <Button size="sm" variant="outline">Abrir no WhatsApp e vincular</Button>
+            </a>
+          )}
         </div>
       ) : (
         <Button

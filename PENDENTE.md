@@ -1,6 +1,6 @@
 # O que falta — my-finance-bot
 
-> Atualizado em 07/10/2026. Fases 1 a 4 (producao, nucleo de canal, familia no privado e grupo do Telegram) implementadas no codigo. Roteiro completo das proximas fases em
+> Atualizado em 07/10/2026. Fases 1 a 5 (producao, nucleo de canal, familia no privado, grupo do Telegram e WhatsApp) implementadas no codigo. Roteiro completo das proximas fases em
 > [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md).
 
 ---
@@ -34,6 +34,7 @@
 | Fase 3 | Nomes de membros e autor de cada transacao (API, bot e painel) | Completo |
 | Fase 3 | Desfazer o ultimo lancamento proprio (10 min) | Completo |
 | Fase 4 | Bot em grupo do Telegram: `/vincular`, `/desvincular`, `/f`, mencao e resposta; aprovacao de membro por botao; historico por pessoa no chat; migracao para supergrupo (migration 014) | Completo |
+| Fase 5 | WhatsApp pela Cloud API oficial, em paralelo ao Telegram: webhook com verificacao e assinatura, roteador de texto, convite `wa.me`, vinculo pelo painel | Completo |
 | Fase 2 | Vinculo de conta: transfere posse do grupo antes de apagar a conta so-bot (evita cascade), descarta historico duplicado, recusa contas em grupos diferentes, codigo de uso unico atomico | Completo |
 
 ---
@@ -45,10 +46,14 @@
 Passo a passo na secao "Deploy" do [`README.md`](README.md). Atencao a ordem: a migration 011
 so pode ser aplicada depois que o backend novo (com `SUPABASE_SERVICE_ROLE_KEY`) estiver no ar.
 
-### Fases 5 e 6
+### Testar o WhatsApp no numero real
+
+Seguir a secao "WhatsApp" do README e validar o fluxo com o numero da Meta (o codigo foi testado contra uma Graph API simulada).
+
+### Fase 6
 
 Ver [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md):
-WhatsApp e debitos tecnicos.
+debitos tecnicos.
 
 ---
 
