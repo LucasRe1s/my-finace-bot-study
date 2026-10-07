@@ -17,7 +17,7 @@ def get_supabase(token: Optional[str] = None) -> Client:
 @lru_cache
 def get_service_supabase() -> Client:
     """Client com a service_role key, que bypassa RLS. Usar so em operacoes do
-    sistema sem usuario logado: bot achando usuario pelo telegram_id, historico
+    sistema sem usuario logado: bot achando usuario pela identidade do canal, historico
     de conversa, consumo de codigo de vinculo, preview e aceite de convite."""
     if not settings.supabase_service_role_key:
         raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY nao configurada no backend.")

@@ -2,14 +2,14 @@
 
 Levantamento das vulnerabilidades e pontos fracos conhecidos deste projeto. É um app pessoal/familiar, não um produto multi-tenant com terceiros desconhecidos. Mesmo assim, vale registrar o que está frágil, principalmente antes de um deploy público.
 
-> Atualizado em 07/10/2026, após a Fase 1 (`specs/2026-10-07-plan-4-producao.md`).
+> Atualizado em 07/10/2026, após as Fases 1 e 2 (`specs/2026-10-07-plan-4-producao.md`, `specs/2026-10-07-plan-5-nucleo-canal.md`).
 
 ## Médio
 
 ### 1. Secrets de alto privilégio no backend
 
 - `SUPABASE_SERVICE_ROLE_KEY` bypassa todo o RLS. Fica só no backend (Render), nunca no frontend nem em `NEXT_PUBLIC_*`. Usada apenas por `app/database.py::get_service_supabase()`, nas operações do sistema listadas na spec (bot, preview e aceite de convite).
-- `SUPABASE_JWT_SECRET` é usado pelo bot (`_generate_user_token`) para emitir tokens em nome de qualquer `user_id`. Se vazar, dá pra forjar um token válido para qualquer usuário.
+- `SUPABASE_JWT_SECRET` é usado pelo bot (`app/services/user_token.py::generate_user_token`) para emitir tokens em nome de qualquer `user_id`. Se vazar, dá pra forjar um token válido para qualquer usuário.
 - `TELEGRAM_WEBHOOK_SECRET` impede que terceiros injetem updates falsos em `POST /telegram/webhook`. A rota recusa tudo (403) quando ele não está configurado.
 
 Os três precisam ser tratados como credenciais de altíssimo privilégio e rotacionados se houver suspeita de vazamento.
@@ -24,7 +24,7 @@ O vínculo confia que quem manda `/start <código>` no bot é a mesma pessoa que
 
 ## Baixo / observações
 
-- Não há rate limiting em `/auth/telegram-link-code` (baixo impacto, só spam de linhas na tabela) nem por usuário no bot (planejado na Fase 2, para proteger a cota do Groq).
+- Não há rate limiting em `/auth/telegram-link-code` (baixo impacto, só spam de linhas na tabela). O bot tem limite por usuário (30 mensagens a cada 10 minutos, em memória) desde a Fase 2.
 - `invites.email` é validado como `str` livre, não `EmailStr`.
 - `?month=` em `/transactions` e `/summary` não valida formato: entrada malformada vira 500 em vez de 422.
 
@@ -33,6 +33,7 @@ O vínculo confia que quem manda `/start <código>` no bot é a mesma pessoa que
 - ~~**Role `anon` com acesso amplo (era crítico).**~~ As migrations 002 a 010 davam ao `anon` policies `USING (true)` em `users`, `conversations`, `group_members`, `transactions`, `invites`, `groups` e `telegram_link_codes`, e a anon key é pública no bundle do frontend. Corrigido: o backend usa `get_service_supabase()` para as operações sem usuário, e a migration `011_revoke_anon_access.sql` remove todas essas policies e faz `REVOKE ALL` do `anon` nas tabelas do app. `tests/test_migrations.py` falha se alguma policy `TO anon` antiga não for removida.
 - ~~**`invites_accept_update` aceitava qualquer convite.**~~ Policy removida na 011. `POST /groups/accept` agora reivindica o convite com um único `UPDATE ... WHERE token = ? AND accepted_at IS NULL` via client de serviço (só um aceite vence) e recusa com 409 quem já está em um grupo.
 - ~~**`group_members_insert_self` deixava qualquer autenticado entrar em qualquer grupo.**~~ Policy removida na 011. O insert do dono ao criar grupo segue coberto por `group_members_owner_all`; o do convidado roda como serviço depois de validar o token.
+- ~~**Vínculo de conta podia apagar dados.**~~ Ao fundir uma conta só-bot na conta web, o usuário antigo era apagado sem transferir `groups.owner_id` (`ON DELETE CASCADE` apagava o grupo e as transações). Corrigido em `app/services/identities.py`. O código de vínculo também passou a ser reivindicado atomicamente.
 - ~~**CORS liberado para qualquer origem.**~~ Agora `allow_origins` vem de `CORS_ORIGINS`.
 - ~~`/debug/token` expunha o payload do JWT sem verificar assinatura.~~ Endpoint removido.
 - ~~Backend validava só HS256, rejeitando os tokens ES256 do Supabase.~~ Verificação via JWKS.

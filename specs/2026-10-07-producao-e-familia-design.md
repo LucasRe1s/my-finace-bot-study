@@ -26,7 +26,7 @@ Cada fase gera software funcional e tem seu próprio plano de implementação em
 | Fase | Entrega | Plano |
 |---|---|---|
 | 1 | Produção: segurança, bot dentro da API via webhook, deploy | `2026-10-07-plan-4-producao.md` |
-| 2 | Núcleo agnóstico de canal + identidades por canal | a escrever |
+| 2 | Núcleo agnóstico de canal + identidades por canal | `2026-10-07-plan-5-nucleo-canal.md` |
 | 3 | Família no privado: convite pelo Telegram, nomes, desfazer | a escrever |
 | 4 | Bot em grupo do Telegram | a escrever |
 | 5 | Adaptador WhatsApp | a escrever |
@@ -133,6 +133,15 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 - Interface `Notifier` por canal para mensagens proativas (alertas).
 - Rate limit por usuário no núcleo (padrão: 30 mensagens a cada 10 minutos, em memória),
   protegendo a cota do Groq.
+
+---
+
+### Ajustes feitos na implementação
+
+- `telegram_link_codes` **não** foi renomeada: o código não pertence a canal; o canal só entra no consumo (`link_identity`).
+- `Notifier` adiado: os alertas de limite voltam como `OutgoingMessage` dentro da própria resposta.
+- `chat_type` e `mentions_bot` ficam para a Fase 4.
+- `users.telegram_id` continua até todos os usuários terem identidade; um fallback adota os antigos.
 
 ---
 
