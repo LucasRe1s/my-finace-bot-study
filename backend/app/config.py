@@ -25,11 +25,29 @@ class Settings(BaseSettings):
     api_base_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:3000"
 
+    # WhatsApp Cloud API. O canal fica desligado se faltar qualquer um dos quatro primeiros.
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_verify_token: str = ""
+    # Numero do bot so com digitos (DDI + DDD + numero), para links wa.me.
+    whatsapp_number: str = ""
+    whatsapp_graph_version: str = "v26.0"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def whatsapp_enabled(self) -> bool:
+        return all((
+            self.whatsapp_access_token,
+            self.whatsapp_phone_number_id,
+            self.whatsapp_app_secret,
+            self.whatsapp_verify_token,
+        ))
 
 
 settings = Settings()

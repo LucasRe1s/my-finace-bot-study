@@ -27,7 +27,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["app*", "agent*", "tgbot*", "core*"]
+include = ["app*", "agent*", "tgbot*", "core*", "wabot*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
