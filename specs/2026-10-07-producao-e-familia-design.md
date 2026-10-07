@@ -27,7 +27,7 @@ Cada fase gera software funcional e tem seu próprio plano de implementação em
 |---|---|---|
 | 1 | Produção: segurança, bot dentro da API via webhook, deploy | `2026-10-07-plan-4-producao.md` |
 | 2 | Núcleo agnóstico de canal + identidades por canal | `2026-10-07-plan-5-nucleo-canal.md` |
-| 3 | Família no privado: convite pelo Telegram, nomes, desfazer | a escrever |
+| 3 | Família no privado: convite pelo Telegram, nomes, desfazer | `2026-10-07-plan-6-familia-privado.md` |
 | 4 | Bot em grupo do Telegram | a escrever |
 | 5 | Adaptador WhatsApp | a escrever |
 | 6 | Débitos técnicos restantes | a escrever |
@@ -157,6 +157,15 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 
 ---
 
+### Ajustes feitos na implementação
+
+- Qualquer membro do grupo pode gerar convite (era "o dono"); restringir depois é uma checagem.
+- Convites expiram em 7 dias (`invites.expires_at`).
+- O link do convite é montado pelo adaptador do canal (`invite_link`), porque o formato muda entre Telegram e WhatsApp.
+- `_ensure_user_profile` não sobrescreve mais o nome; o nome do canal substitui um nome vazio ou com `@`.
+
+---
+
 ## Fase 4: bot em grupo do Telegram
 
 - Tabela `chat_bindings (channel, chat_id, group_id, created_by, created_at, UNIQUE(channel, chat_id))`.
@@ -187,7 +196,6 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 
 | Origem | Correção |
 |---|---|
-| P1-T4 | `InviteCreate.email` como `EmailStr` (opcional após a Fase 3) |
 | P1-T5 | `?month=` validado como `YYYY-MM`, 422 em vez de 500 |
 | P3-T2 | `getSession()` no servidor trocado por `getUser()` |
 | P3-T2 | Auth callback redireciona para `/login` quando `code` ausente |
