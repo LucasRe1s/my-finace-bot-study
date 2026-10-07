@@ -22,23 +22,37 @@ logger = logging.getLogger("bot")
 FALLBACK_REPLY = "Desculpe, tive um problema para processar sua mensagem. Pode tentar novamente?"
 RATE_LIMIT_REPLY = "Você enviou muitas mensagens em pouco tempo. Aguarde alguns minutos e tente novamente."
 JOIN_PREFIX = "join_"
-HELP_TEXT = (
-    "Comandos disponíveis:\n\n"
-    "/start: iniciar ou reiniciar o assistente\n"
-    "/convidar: gerar link de convite para um familiar\n"
-    "/vincular: ligar um grupo do Telegram ao seu grupo financeiro (no grupo)\n"
-    "/desvincular: desligar o grupo do Telegram (no grupo)\n"
-    "/f <mensagem>: falar comigo dentro de um grupo do Telegram\n"
-    "/ajuda: exibir esta mensagem\n\n"
-    "O que posso fazer por você:\n"
-    "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
-    "- Desfazer o último lançamento ('Desfaz o último')\n"
-    "- Consultar saldo do mês ('Qual meu saldo?')\n"
-    "- Ver extrato ('Mostre meus gastos de junho')\n"
-    "- Resumo por categoria ('Quanto gastei com alimentação?')\n"
-    "- Definir limites ('Limite de R$ 500 para Alimentação')\n"
-    "- Ver limites ('Quais são meus limites?')"
-)
+_HELP_COMMANDS = [
+    "/start: iniciar ou reiniciar o assistente",
+    "/convidar: gerar link de convite para um familiar",
+]
+# Grupos so existem no Telegram (no WhatsApp a Groups API exige conta oficial).
+_TELEGRAM_GROUP_COMMANDS = [
+    "/vincular: ligar um grupo do Telegram ao seu grupo financeiro (no grupo)",
+    "/desvincular: desligar o grupo do Telegram (no grupo)",
+    "/f <mensagem>: falar comigo dentro de um grupo do Telegram",
+]
+_HELP_FEATURES = [
+    "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')",
+    "- Desfazer o último lançamento ('Desfaz o último')",
+    "- Consultar saldo do mês ('Qual meu saldo?')",
+    "- Ver extrato ('Mostre meus gastos de junho')",
+    "- Resumo por categoria ('Quanto gastei com alimentação?')",
+    "- Definir limites ('Limite de R$ 500 para Alimentação')",
+    "- Ver limites ('Quais são meus limites?')",
+]
+
+
+def help_text(channel: str) -> str:
+    commands = _HELP_COMMANDS + (_TELEGRAM_GROUP_COMMANDS if channel == "telegram" else [])
+    commands.append("/ajuda: exibir esta mensagem")
+    return (
+        "Comandos disponíveis:\n\n" + "\n".join(commands)
+        + "\n\nO que posso fazer por você:\n" + "\n".join(_HELP_FEATURES)
+    )
+
+
+HELP_TEXT = help_text("telegram")
 
 # Protege a cota do provedor do LLM: 30 mensagens a cada 10 minutos por pessoa.
 limiter = SlidingWindowLimiter(max_events=30, window_seconds=600)
@@ -201,4 +215,4 @@ def invite_command(msg: IncomingMessage, invite_link: Callable[[str], str]) -> l
 
 
 def help_message(msg: IncomingMessage) -> list[OutgoingMessage]:
-    return _reply(msg, HELP_TEXT)
+    return _reply(msg, help_text(msg.channel))

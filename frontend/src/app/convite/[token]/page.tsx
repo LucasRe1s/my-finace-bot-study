@@ -136,11 +136,15 @@ export default function ConvitePage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={6}
+                  // So no cadastro: contas antigas podem ter senha menor e precisam entrar.
+                  minLength={mode === "signup" ? 10 : undefined}
                   autoComplete={
                     mode === "signup" ? "new-password" : "current-password"
                   }
                 />
+                {mode === "signup" && (
+                  <p className="text-xs text-gray-500">Mínimo de 10 caracteres.</p>
+                )}
               </div>
 
               {errorMsg && <p className="text-sm text-red-600">{errorMsg}</p>}

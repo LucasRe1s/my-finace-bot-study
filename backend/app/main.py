@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import transactions, summary, limits, groups, auth_link
 from tgbot.webhook import router as telegram_router, telegram_lifespan
+from wabot.webhook import router as whatsapp_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +31,7 @@ app.include_router(limits.router)
 app.include_router(groups.router)
 app.include_router(auth_link.router)
 app.include_router(telegram_router)
+app.include_router(whatsapp_router)
 
 
 @app.middleware("http")

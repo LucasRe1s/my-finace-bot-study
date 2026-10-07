@@ -29,8 +29,8 @@ Cada fase gera software funcional e tem seu próprio plano de implementação em
 | 2 | Núcleo agnóstico de canal + identidades por canal | `2026-10-07-plan-5-nucleo-canal.md` |
 | 3 | Família no privado: convite pelo Telegram, nomes, desfazer | `2026-10-07-plan-6-familia-privado.md` |
 | 4 | Bot em grupo do Telegram | `2026-10-07-plan-7-grupo-telegram.md` |
-| 5 | Adaptador WhatsApp | a escrever |
-| 6 | Débitos técnicos restantes | a escrever |
+| 5 | Adaptador WhatsApp | `2026-10-07-plan-8-whatsapp.md` |
+| 6 | Débitos técnicos restantes | `2026-10-07-plan-9-debitos.md` |
 
 ---
 
@@ -202,16 +202,26 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 
 ---
 
+### Ajustes feitos na implementação (pesquisa em 07/10/2026)
+
+- Provedor: Cloud API oficial da Meta; Telegram mantido em paralelo.
+- Sem grupos no WhatsApp: a Groups API exige Official Business Account e aceita no máximo 8 participantes.
+- Sem templates: o bot só responde, então tudo fica na janela de 24h.
+- Convite via `wa.me/<número>?text=join_<token>`; vínculo com `/start <código>` como no Telegram.
+- Reentregas da Meta descartadas pelo `wamid`; texto acima de 4096 caracteres é dividido.
+
+---
+
 ## Fase 6: débitos técnicos
 
 | Origem | Correção |
 |---|---|
 | P1-T5 | `?month=` validado como `YYYY-MM`, 422 em vez de 500 |
-| P3-T2 | `getSession()` no servidor trocado por `getUser()` |
+| P3-T2 | `getSession()` no servidor trocado por `getClaims()` (verifica a assinatura localmente com as chaves assimétricas) |
 | P3-T2 | Auth callback redireciona para `/login` quando `code` ausente |
 | SEC-03 | Senha mínima de 10 caracteres + checagem de senha vazada no Supabase Auth |
 | SECURITY item 2 | Código de vínculo com 10 min e uso único já mitiga; avaliar confirmação no web |
 
 ## Decisões em aberto (resolver no início de cada fase)
 
-- Fase 5: provedor do WhatsApp e se vale manter o Telegram em paralelo.
+Nenhuma no momento.

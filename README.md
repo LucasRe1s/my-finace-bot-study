@@ -22,7 +22,7 @@ Bot de auxílio financeiro pessoal/familiar via Telegram, com entrada de dados e
 
 O bot sobe no lifespan da API quando `TELEGRAM_MODE=webhook`. A lógica de conversa fica em
 `backend/core/` e não conhece o Telegram: recebe uma `IncomingMessage` e devolve `OutgoingMessage`s.
-`backend/tgbot/` é só o adaptador do canal (o WhatsApp será outro adaptador). Cada pessoa é
+`backend/tgbot/` (Telegram) e `backend/wabot/` (WhatsApp) são só adaptadores de canal. Cada pessoa é
 identificada por canal na tabela `user_identities`. Operações sem usuário logado
 (bot, preview e aceite de convite) usam a `service_role` key no backend; o role `anon` não tem
 acesso às tabelas (migration 011).
@@ -70,6 +70,7 @@ backend/
   agent/        # Agente Agno (bot.py, tools.py, prompts.py, history.py)
   core/         # Núcleo de conversa independente de canal (rate limit, alertas)
   tgbot/        # Adaptador Telegram: handlers, runner (polling) e webhook
+  wabot/        # Adaptador WhatsApp (Cloud API): webhook, roteador de texto e envio
   supabase/     # Migrations SQL
   tests/        # Testes pytest
 frontend/       # Dashboard Next.js
@@ -112,6 +113,11 @@ Crie um `.env` a partir de `.env.example`:
 
 Rode as migrations em `backend/supabase/migrations/` (em ordem numérica) no SQL editor do Supabase.
 
+No painel do Supabase, em Authentication > Providers > Email, defina a **senha mínima em 10
+caracteres** e, se o plano permitir, ative a proteção contra senhas vazadas. O formulário do
+painel já exige 10, mas sem essa configuração alguém poderia se cadastrar direto pela API do
+Supabase com uma senha menor.
+
 ### Frontend
 
 ```bash
@@ -146,6 +152,36 @@ o lançamento de outra. Alertas de limite aparecem no grupo.
 a documentação não garante a entrega de menções. Para a menção funcionar sempre, desligue o
 privacy mode no @BotFather (`/setprivacy` > Disable). O bot continua ignorando o que não é
 dirigido a ele: conversas da família não passam pelo LLM.
+
+## WhatsApp (opcional)
+
+O bot também atende pelo WhatsApp, no privado, com as mesmas funções do Telegram: registrar,
+consultar, limites, desfazer, `/convidar` e vínculo com a conta web (`/start <código>`). Os dois
+canais funcionam em paralelo e gravam no mesmo grupo financeiro.
+
+Configuração na Meta (Cloud API oficial):
+
+1. Em developers.facebook.com, crie um app do tipo Business e adicione o produto WhatsApp.
+2. Registre o número do bot e anote o **Phone number ID**.
+3. Gere um **token permanente** (System User no Business Manager, com permissão
+   `whatsapp_business_messaging`). O token temporário do painel expira em 24h.
+4. Em WhatsApp > Configuration, cadastre o webhook `https://<sua-api>/whatsapp/webhook` com um
+   **verify token** escolhido por você e assine o campo `messages`.
+5. Copie o **App Secret** (App settings > Basic), usado para validar a assinatura dos webhooks.
+6. Preencha no backend `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`,
+   `WHATSAPP_VERIFY_TOKEN` e `WHATSAPP_NUMBER` (só dígitos). No frontend,
+   `NEXT_PUBLIC_WHATSAPP_NUMBER` mostra o botão "Abrir no WhatsApp" no vínculo de conta.
+
+Sem as quatro primeiras variáveis o canal fica desligado e `/whatsapp/webhook` responde 404.
+
+Limitações:
+
+- **Sem grupos no WhatsApp:** a Groups API da Meta exige Official Business Account e aceita no
+  máximo 8 participantes. Cada pessoa da família fala com o bot no privado.
+- **Só texto:** áudio, imagem e outros tipos recebem uma mensagem pedindo texto.
+- **Janela de 24h e custo:** o bot só responde a mensagens recebidas, então tudo fica dentro da
+  janela de atendimento, sem templates. A página oficial de preços indica essas mensagens como
+  gratuitas; confira no painel da Meta, porque a política de preços muda com frequência.
 
 ## Rodando localmente
 

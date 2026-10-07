@@ -223,3 +223,13 @@ async def test_process_message_passes_invite_link_to_tools(db):
         await process_message(MSG, api_base_url="http://internal", invite_link=LINK)
 
     assert captured["invite_link"] is LINK
+
+
+def test_help_text_hides_telegram_group_commands_on_whatsapp():
+    from core.conversation import HELP_TEXT, help_text
+
+    assert HELP_TEXT == help_text("telegram")
+    assert "/vincular" in help_text("telegram")
+    whatsapp = help_text("whatsapp")
+    assert "/vincular" not in whatsapp and "/f " not in whatsapp
+    assert "/convidar" in whatsapp and "/ajuda" in whatsapp
