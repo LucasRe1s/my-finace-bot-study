@@ -1,4 +1,5 @@
 import calendar
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -86,3 +87,30 @@ async def list_transactions(
     rows = query.order("date", desc=True).execute().data or []
     names = names_by_id(get_service_supabase(), [t.get("user_id") for t in rows])
     return [{**t, "user_name": names.get(t.get("user_id"))} for t in rows]
+
+
+UNDO_WINDOW_MINUTES = 10
+
+
+@router.post("/undo-last", response_model=Transaction)
+async def undo_last_transaction(user: dict = Depends(get_current_user)):
+    """Apaga a ultima transacao do proprio usuario criada nos ultimos 10 min."""
+    db = get_supabase(user["token"])
+    since = (datetime.now(timezone.utc) - timedelta(minutes=UNDO_WINDOW_MINUTES)).isoformat()
+    result = (
+        db.table("transactions")
+        .select("*")
+        .eq("user_id", user["id"])
+        .gte("created_at", since)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nenhuma transação sua nos últimos {UNDO_WINDOW_MINUTES} minutos.",
+        )
+    tx = result.data[0]
+    db.table("transactions").delete().eq("id", tx["id"]).execute()
+    return tx

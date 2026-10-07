@@ -216,3 +216,25 @@ async def test_consultar_extrato_shows_author():
     extrato = next(t for t in tools if t.__name__ == "consultar_extrato")
 
     assert "Cinema | 2026-10-07 | Bia" in await extrato()
+
+
+@pytest.mark.asyncio
+async def test_desfazer_ultima_transacao():
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    api = FastAPI()
+    state = {"calls": 0}
+
+    @api.post("/transactions/undo-last")
+    async def undo():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {"amount": 50.0, "type": "expense", "category": "Lazer", "description": "Cinema"}
+        return JSONResponse({"detail": "nada"}, status_code=404)
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api))
+    desfazer = next(t for t in tools if t.__name__ == "desfazer_ultima_transacao")
+
+    assert await desfazer() == "Transação desfeita: Despesa de R$ 50,00 em Lazer (Cinema)."
+    assert "nos últimos 10 minutos" in await desfazer()

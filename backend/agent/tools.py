@@ -167,6 +167,20 @@ def build_tools(
             lines.append(f"  ... e mais {len(transactions) - 20} transação(ões).")
         return "\n".join(lines)
 
+    async def desfazer_ultima_transacao() -> str:
+        """Desfaz (apaga) a última transação registrada pelo próprio usuário nos últimos 10 minutos.
+        Use somente depois que o usuário confirmar."""
+        async with _client() as client:
+            response = await client.post("/transactions/undo-last", headers=headers)
+        if response.status_code == 200:
+            tx = response.json()
+            tipo = "Receita" if tx["type"] == "income" else "Despesa"
+            descricao = tx.get("description") or "sem descrição"
+            return f"Transação desfeita: {tipo} de {_fmt_brl(tx['amount'])} em {tx['category']} ({descricao})."
+        if response.status_code == 404:
+            return "Não há transação sua registrada nos últimos 10 minutos para desfazer."
+        return f"Erro ao desfazer transação: {response.text}"
+
     async def consultar_resumo(month: str = None) -> str:
         """Consulta o resumo financeiro do mês com saldo e gastos por categoria.
 
@@ -240,6 +254,7 @@ def build_tools(
         registrar_transacao,
         criar_grupo,
         consultar_extrato,
+        desfazer_ultima_transacao,
         consultar_resumo,
         consultar_limites,
         definir_limite,
