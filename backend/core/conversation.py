@@ -13,6 +13,7 @@ from app.services.identities import InvalidLinkCode, LinkConflict, get_or_create
 from app.services.membership import find_user_group, group_name
 from app.services.user_token import generate_user_token
 
+from .group_chat import chat_key, group_access_refusal
 from .messages import IncomingMessage, OutgoingMessage
 from .rate_limit import SlidingWindowLimiter
 
@@ -25,6 +26,9 @@ HELP_TEXT = (
     "Comandos disponíveis:\n\n"
     "/start: iniciar ou reiniciar o assistente\n"
     "/convidar: gerar link de convite para um familiar\n"
+    "/vincular: ligar um grupo do Telegram ao seu grupo financeiro (no grupo)\n"
+    "/desvincular: desligar o grupo do Telegram (no grupo)\n"
+    "/f <mensagem>: falar comigo dentro de um grupo do Telegram\n"
     "/ajuda: exibir esta mensagem\n\n"
     "O que posso fazer por você:\n"
     "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
@@ -41,7 +45,8 @@ limiter = SlidingWindowLimiter(max_events=30, window_seconds=600)
 
 
 def _reply(msg: IncomingMessage, text: str) -> list[OutgoingMessage]:
-    return [OutgoingMessage(chat_id=msg.chat_id, text=text)]
+    reply_to = msg.message_id if msg.chat_type == "group" else None
+    return [OutgoingMessage(chat_id=msg.chat_id, text=text, reply_to=reply_to)]
 
 
 def _with_history(history: list[dict], text: str) -> str:
@@ -62,6 +67,8 @@ async def process_message(
     transport=None,
     invite_link: Callable[[str], str] | None = None,
 ) -> list[OutgoingMessage]:
+    if msg.chat_type == "group" and not msg.addressed:
+        return []
     who = f"{msg.channel}:{msg.external_user_id}"
     if not limiter.allow(who):
         logger.warning("[%s] Rate limit atingido", who)
@@ -70,7 +77,13 @@ async def process_message(
     try:
         db = get_service_supabase()
         user, _ = get_or_create_user(db, msg.channel, msg.external_user_id, msg.display_name)
-        history = get_history(db, user["id"])
+        history_key = None
+        if msg.chat_type == "group":
+            refusal = group_access_refusal(db, msg, user)
+            if refusal:
+                return refusal
+            history_key = chat_key(msg)
+        history = get_history(db, user["id"], history_key)
 
         alerts: list[str] = []
         tools = build_tools(
@@ -93,7 +106,7 @@ async def process_message(
             reply = FALLBACK_REPLY
 
         history += [{"role": "user", "content": msg.text}, {"role": "assistant", "content": reply}]
-        save_history(db, user["id"], history)
+        save_history(db, user["id"], history, history_key)
     except Exception:
         logger.exception("[%s] Falha ao processar mensagem", who)
         return _reply(msg, FALLBACK_REPLY)
