@@ -41,3 +41,17 @@ def test_anon_grants_are_revoked_on_app_tables():
         "category_limits", "invites", "telegram_link_codes",
     ):
         assert re.search(rf"REVOKE ALL ON public\.{table} FROM anon;", sql), table
+
+
+def test_user_identities_has_rls_and_no_anon():
+    sql = _sql("012_user_identities.sql")
+    assert "CREATE TABLE public.user_identities" in sql
+    assert "UNIQUE (channel, external_id)" in sql
+    assert "ALTER TABLE public.user_identities ENABLE ROW LEVEL SECURITY;" in sql
+    assert "REVOKE ALL ON public.user_identities FROM anon;" in sql
+    assert not re.search(r"\bTO\s+anon\b", sql)
+
+
+def test_user_identities_backfills_telegram_ids():
+    sql = _sql("012_user_identities.sql")
+    assert re.search(r"INSERT INTO public\.user_identities.*FROM public\.users.*telegram_id IS NOT NULL", sql, re.S)
