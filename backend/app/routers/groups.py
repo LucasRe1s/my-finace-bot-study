@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..auth import get_current_user
-from ..database import get_supabase
+from ..database import get_service_supabase, get_supabase
 from ..models.group import InviteCreate
-from ..routers.transactions import _ensure_user_profile, _get_user_group
+from ..routers.transactions import _ensure_user_profile, _find_user_group, _get_user_group
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -49,10 +49,10 @@ async def invite_member(
 
 @router.get("/invite/{token}")
 async def get_invite_preview(token: str):
-    """Endpoint publico: quem recebeu o link de convite ainda nao tem conta,
-    entao roda sem autenticacao (role anon) so pra mostrar pra qual grupo/email
-    o convite e antes do signup/login."""
-    db = get_supabase()
+    """Endpoint publico: quem recebeu o link de convite ainda nao tem conta.
+    Roda com o client de servico porque o role anon nao le mais invites/groups
+    (migration 011); so devolve email e nome do grupo de um token valido."""
+    db = get_service_supabase()
     invite = (
         db.table("invites")
         .select("email, group_id")
@@ -88,15 +88,27 @@ async def accept_invite(
     user: dict = Depends(get_current_user),
 ):
     db = get_supabase(user["token"])
-    invite = db.table("invites").select("*").eq("token", token).is_("accepted_at", "null").single().execute()
-    if not invite.data:
+    _ensure_user_profile(db, user)
+    if _find_user_group(db, user["id"]) is not None:
+        raise HTTPException(status_code=409, detail="Você já participa de um grupo financeiro.")
+
+    # Reivindica o convite num unico UPDATE condicional: so um aceite vence,
+    # mesmo com duas requisicoes simultaneas para o mesmo token. Roda como
+    # servico porque o usuario nao tem permissao de UPDATE em invites (SEC-02).
+    service = get_service_supabase()
+    claimed = (
+        service.table("invites")
+        .update({"accepted_at": datetime.now(timezone.utc).isoformat()})
+        .eq("token", token)
+        .is_("accepted_at", "null")
+        .execute()
+    )
+    if not claimed.data:
         raise HTTPException(status_code=404, detail="Convite inválido ou já utilizado")
 
-    _ensure_user_profile(db, user)
-    db.table("group_members").insert({
-        "group_id": invite.data["group_id"],
+    service.table("group_members").insert({
+        "group_id": claimed.data[0]["group_id"],
         "user_id": user["id"],
         "role": "member",
     }).execute()
-    db.table("invites").update({"accepted_at": datetime.now(timezone.utc).isoformat()}).eq("id", invite.data["id"]).execute()
     return {"message": "Convite aceito com sucesso"}

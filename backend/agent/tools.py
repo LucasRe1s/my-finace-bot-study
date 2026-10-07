@@ -56,8 +56,14 @@ def build_tools(
     api_base_url: str = "http://localhost:8000",
     bot=None,
     telegram_id=None,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> list:
     headers = {"Authorization": f"Bearer {user_token}"}
+
+    def _client() -> httpx.AsyncClient:
+        # Com transport (bot dentro da API), as chamadas vao direto para o app
+        # FastAPI em processo, sem rede; sem ele, vao por HTTP para api_base_url.
+        return httpx.AsyncClient(base_url=api_base_url, transport=transport, timeout=30)
 
     async def registrar_transacao(
         amount: float,
@@ -82,14 +88,14 @@ def build_tools(
             "description": description,
             "date": date or str(DateType.today()),
         }
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/transactions/",
+                "/transactions/",
                 json=payload,
                 headers=headers,
             )
             if response.status_code == 201 and bot and telegram_id:
-                limits_response = await client.get(f"{api_base_url}/limits/", headers=headers)
+                limits_response = await client.get("/limits/", headers=headers)
                 if limits_response.status_code == 200:
                     for lim in limits_response.json():
                         if lim["category"] == category:
@@ -113,9 +119,9 @@ def build_tools(
         Args:
             name: Nome do grupo (padrão: "Minha Família")
         """
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/groups/",
+                "/groups/",
                 json={"name": name},
                 headers=headers,
             )
@@ -143,9 +149,9 @@ def build_tools(
         if type:
             params["type"] = type
 
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.get(
-                f"{api_base_url}/transactions/",
+                "/transactions/",
                 params=params,
                 headers=headers,
             )
@@ -174,9 +180,9 @@ def build_tools(
         if month:
             params["month"] = month
 
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.get(
-                f"{api_base_url}/summary/",
+                "/summary/",
                 params=params,
                 headers=headers,
             )
@@ -198,8 +204,8 @@ def build_tools(
 
     async def consultar_limites() -> str:
         """Consulta os limites mensais configurados por categoria e o percentual utilizado."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{api_base_url}/limits/", headers=headers)
+        async with _client() as client:
+            response = await client.get("/limits/", headers=headers)
         if response.status_code != 200:
             return f"Erro ao consultar limites: {response.text}"
 
@@ -223,9 +229,9 @@ def build_tools(
             category: Categoria (Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Vestuário, Outros)
             monthly_limit: Valor limite mensal em reais
         """
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/limits/",
+                "/limits/",
                 json={"category": category, "monthly_limit": monthly_limit},
                 headers=headers,
             )
