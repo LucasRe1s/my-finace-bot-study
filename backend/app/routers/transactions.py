@@ -24,7 +24,7 @@ def _ensure_user_profile(db: Client, user: dict) -> None:
     ).execute()
 
 
-def _get_user_group(db: Client, user_id: str) -> str:
+def _find_user_group(db: Client, user_id: str) -> str | None:
     result = (
         db.table("group_members")
         .select("group_id")
@@ -32,12 +32,17 @@ def _get_user_group(db: Client, user_id: str) -> str:
         .limit(1)
         .execute()
     )
-    if not result.data:
+    return result.data[0]["group_id"] if result.data else None
+
+
+def _get_user_group(db: Client, user_id: str) -> str:
+    group_id = _find_user_group(db, user_id)
+    if group_id is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Usuário não pertence a nenhum grupo. Crie um grupo ou aceite um convite.",
         )
-    return result.data[0]["group_id"]
+    return group_id
 
 
 @router.post("/", response_model=Transaction, status_code=status.HTTP_201_CREATED)
