@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 from supabase import Client
 
+from .membership import find_user_group
+
 logger = logging.getLogger("api")
 
 
@@ -68,11 +70,6 @@ def get_or_create_user(db: Client, channel: str, external_id: str, display_name:
     return created, True
 
 
-def _group_of(db: Client, user_id: str) -> str | None:
-    result = db.table("group_members").select("group_id").eq("user_id", user_id).limit(1).execute()
-    return result.data[0]["group_id"] if result.data else None
-
-
 def link_identity(db: Client, code: str, channel: str, external_id: str) -> None:
     """Liga a identidade do canal a conta web dona do codigo. Se a identidade
     ja pertencia a outro usuario (conta so-bot), funde esse usuario na conta web."""
@@ -92,7 +89,7 @@ def link_identity(db: Client, code: str, channel: str, external_id: str) -> None
     current = find_user_by_identity(db, channel, external_id)
     old_id = current["id"] if current and current["id"] != target_id else None
     if old_id:
-        old_group, target_group = _group_of(db, old_id), _group_of(db, target_id)
+        old_group, target_group = find_user_group(db, old_id), find_user_group(db, target_id)
         if old_group and target_group and old_group != target_group:
             raise LinkConflict()
 

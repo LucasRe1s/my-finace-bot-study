@@ -23,6 +23,7 @@ class _Query:
         self._on_conflict = None
         self._single = False
         self._limit = None
+        self._order = None
 
     def select(self, *_args):
         self._op = "select"
@@ -57,6 +58,15 @@ class _Query:
         self._filters.append(lambda row: row.get(column) is not None and row[column] >= value)
         return self
 
+    def in_(self, column, values):
+        allowed = set(values)
+        self._filters.append(lambda row: row.get(column) in allowed)
+        return self
+
+    def order(self, column, desc=False):
+        self._order = (column, desc)
+        return self
+
     def limit(self, n):
         self._limit = n
         return self
@@ -70,6 +80,9 @@ class _Query:
         matched = [row for row in rows if all(f(row) for f in self._filters)]
 
         if self._op == "select":
+            if self._order:
+                column, desc = self._order
+                matched = sorted(matched, key=lambda row: row.get(column), reverse=desc)
             data = [dict(row) for row in matched][: self._limit]
             if self._single:
                 return _Result(data[0]) if data else None

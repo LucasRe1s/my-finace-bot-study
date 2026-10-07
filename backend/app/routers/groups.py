@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from ..auth import get_current_user
 from ..database import get_service_supabase, get_supabase
 from ..models.group import InviteCreate
-from ..routers.transactions import _ensure_user_profile, _find_user_group, _get_user_group
+from ..services.invites import AlreadyInGroup, InviteNotFound, accept_invite as accept_invite_service, create_invite
+from ..services.membership import group_name, names_by_id
+from ..routers.transactions import _ensure_user_profile, _get_user_group
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -37,14 +39,10 @@ async def invite_member(
 ):
     db = get_supabase(user["token"])
     group_id = _get_user_group(db, user["id"])
-    result = db.table("invites").insert({
-        "group_id": group_id,
-        "invited_by": user["id"],
-        "email": data.email,
-    }).execute()
-    if not result.data:
+    invite = create_invite(db, group_id, user["id"], data.email)
+    if invite is None:
         raise HTTPException(status_code=500, detail="Erro ao criar convite. Tente novamente.")
-    return result.data[0]
+    return invite
 
 
 @router.get("/invite/{token}")
@@ -58,15 +56,13 @@ async def get_invite_preview(token: str):
         .select("email, group_id")
         .eq("token", token)
         .is_("accepted_at", "null")
+        .gte("expires_at", datetime.now(timezone.utc).isoformat())
         .maybe_single()
         .execute()
     )
     if not invite or not invite.data:
         raise HTTPException(status_code=404, detail="Convite inválido ou já utilizado")
-
-    group = db.table("groups").select("name").eq("id", invite.data["group_id"]).maybe_single().execute()
-    group_name = group.data["name"] if group and group.data else "grupo financeiro"
-    return {"email": invite.data["email"], "group_name": group_name}
+    return {"email": invite.data["email"], "group_name": group_name(db, invite.data["group_id"])}
 
 
 @router.get("/members")
@@ -89,26 +85,10 @@ async def accept_invite(
 ):
     db = get_supabase(user["token"])
     _ensure_user_profile(db, user)
-    if _find_user_group(db, user["id"]) is not None:
+    try:
+        accept_invite_service(get_service_supabase(), token, user["id"])
+    except AlreadyInGroup:
         raise HTTPException(status_code=409, detail="Você já participa de um grupo financeiro.")
-
-    # Reivindica o convite num unico UPDATE condicional: so um aceite vence,
-    # mesmo com duas requisicoes simultaneas para o mesmo token. Roda como
-    # servico porque o usuario nao tem permissao de UPDATE em invites (SEC-02).
-    service = get_service_supabase()
-    claimed = (
-        service.table("invites")
-        .update({"accepted_at": datetime.now(timezone.utc).isoformat()})
-        .eq("token", token)
-        .is_("accepted_at", "null")
-        .execute()
-    )
-    if not claimed.data:
+    except InviteNotFound:
         raise HTTPException(status_code=404, detail="Convite inválido ou já utilizado")
-
-    service.table("group_members").insert({
-        "group_id": claimed.data[0]["group_id"],
-        "user_id": user["id"],
-        "role": "member",
-    }).execute()
     return {"message": "Convite aceito com sucesso"}

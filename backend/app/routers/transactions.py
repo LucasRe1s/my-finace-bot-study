@@ -7,6 +7,7 @@ from supabase import Client
 from ..auth import get_current_user
 from ..database import get_supabase
 from ..models.transaction import Transaction, TransactionCreate
+from ..services.membership import find_user_group as _find_user_group
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -22,17 +23,6 @@ def _ensure_user_profile(db: Client, user: dict) -> None:
         {"id": user["id"], "name": user.get("email", "")},
         on_conflict="id",
     ).execute()
-
-
-def _find_user_group(db: Client, user_id: str) -> str | None:
-    result = (
-        db.table("group_members")
-        .select("group_id")
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    return result.data[0]["group_id"] if result.data else None
 
 
 def _get_user_group(db: Client, user_id: str) -> str:
