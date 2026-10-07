@@ -183,7 +183,8 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 | P3-T2 | `getSession()` no servidor trocado por `getUser()` |
 | P3-T2 | Auth callback redireciona para `/login` quando `code` ausente |
 | SEC-03 | Senha mínima de 10 caracteres + checagem de senha vazada no Supabase Auth |
-| SECURITY item 3 | Código de vínculo com 10 min e uso único já mitiga; avaliar confirmação no web |
+| SECURITY item 2 | Código de vínculo com 10 min e uso único já mitiga; avaliar confirmação no web |
+| FRONT-01 | Página de convite mostra o erro cru da API; exibir só o `detail` |
 
 ## Decisões em aberto (resolver no início de cada fase)
 

@@ -1,6 +1,7 @@
 # O que falta — my-finance-bot
 
-> Atualizado em 16/07/2026. Backend, bot e dashboard funcionando, incluindo criacao de grupo, convite por link e vinculo de conta Telegram.
+> Atualizado em 07/10/2026. Fase 1 (producao) implementada no codigo. Roteiro completo das proximas fases em
+> [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md).
 
 ---
 
@@ -19,45 +20,28 @@
 | Convite sem email | Link copiavel + pagina /convite/[token] (signup + accept) | Completo |
 | Vinculo Telegram | Codigo de uso unico, migra dados de identidade so-bot pre-existente | Completo |
 | Blindagem do agente | Detecta vazamento de tool-call e erro bruto do provedor (Groq) | Completo |
+| SEC-01 | Client de servico no backend + migration 011 remove todo acesso do role anon | Completo |
+| SEC-02 | Aceite de convite atomico via servico; remove `invites_accept_update` e `group_members_insert_self` | Completo |
+| Bot na API | Webhook `POST /telegram/webhook` no lifespan do FastAPI; tools chamam a API em processo | Completo |
+| Vinculo Telegram | Endpoint publico `/auth/telegram-link` removido; bot chama o servico direto | Completo |
+| CORS-01 | Origens via `CORS_ORIGINS` | Completo |
+| OPENAI-01 | `OPENAI_API_KEY` removida das settings | Completo |
+| Deploy (codigo) | `render.yaml` com um unico web service | Completo |
 
 ---
 
-## Pendente — Em andamento
+## Pendente: proximo passo
 
-### SEC-01: policies de RLS permissivas para `anon` (ver SECURITY.md)
+### DEPLOY-01: executar o deploy
 
-O bot precisa operar sem sessao de usuario Supabase, e isso levou a policies
-`USING (true)` para o role `anon` em varias tabelas (users, conversations,
-group_members, transactions, invites, groups, telegram_link_codes). Como a
-anon key e publica (fica no bundle do frontend), qualquer pessoa com ela
-consegue ler/escrever esses dados direto na API do Supabase, sem passar pelo
-backend. Detalhe completo e recomendacao de correcao (service_role key para
-operacoes do bot) em [`SECURITY.md`](SECURITY.md).
+Passo a passo na secao "Deploy" do [`README.md`](README.md). Atencao a ordem: a migration 011
+so pode ser aplicada depois que o backend novo (com `SUPABASE_SERVICE_ROLE_KEY`) estiver no ar.
 
----
+### Fases 2 a 6
 
-## Pendente — Proximo ciclo
-
-### DEPLOY-01: Deploy Render + Vercel
-
-**Backend (Render):**
-- Dockerfile ou buildpack Python
-- Variaveis de ambiente: todas do `backend/.env`
-- Porta: `$PORT` (Render injeta)
-- Comando: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-
-**Frontend (Vercel):**
-- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_API_URL` apontando para o Render
-- `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=finncyBot`
-
-**Bot Telegram (Render — servico separado ou mesmo servico):**
-- Comando de start: `python -m tgbot.runner`
-- Variaveis: todas do `.env` incluindo `GROQ_API_KEY`
-
-### OPENAI-01: `OPENAI_API_KEY` no .env esta vazio
-
-Campo existe em `config.py` mas nao e usado. Remover ou documentar que e legado.
+Ver [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md):
+nucleo agnostico de canal, familia no privado (convite pelo Telegram), bot em grupo do Telegram,
+WhatsApp e debitos tecnicos.
 
 ---
 
@@ -70,8 +54,6 @@ Campo existe em `config.py` mas nao e usado. Remover ou documentar que e legado.
 | P3-T2 | `getSession()` no servidor — trocar por `getUser()` |
 | P3-T2 | Auth callback sem redirect quando `code` ausente |
 | P3-T6 | `family/page.tsx` exibe user_id truncado — melhorar com tabela profiles |
-| BOT-01 | Ver SEC-01 acima — escopo cresceu para varias tabelas, nao so `users` |
 | ~~DEBUG-01~~ | ~~Remover `/debug/token` endpoint antes do deploy~~ — feito |
-| SEC-02 (era P1-T2) | `invites_accept_update` usa `USING(true)` — qualquer autenticado aceita qualquer convite |
 | SEC-03 | Senha minima de 6 caracteres no signup via convite |
-| CORS-01 | `allow_origins=["*"]` no backend — restringir a origem do frontend em producao |
+| FRONT-01 | Pagina de convite mostra o erro cru da API (`API error 409: {...}`); exibir so o `detail` |

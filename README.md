@@ -5,18 +5,27 @@ Bot de auxílio financeiro pessoal/familiar via Telegram, com entrada de dados e
 ## Arquitetura
 
 ```
-[Telegram] ←→ [python-telegram-bot v21]
-                        ↓
-              [Agno Agent + Tools]
-                        ↓
-              [FastAPI Backend (Python 3.12)]
-                        ↓
-              [Supabase (PostgreSQL + Auth)]
-                        ↑
-              [Next.js Dashboard] ←→ [FastAPI Backend]
+[Telegram] --webhook--> POST /telegram/webhook
+                              |
+        +---------------------v----------------------+
+        | FastAPI (um processo)                      |
+        |   python-telegram-bot v22 (sem polling)    |
+        |   Agente Agno + Groq -> tools              |
+        |   tools chamam a propria API em processo   |
+        |   (httpx.ASGITransport, JWT do usuario)    |
+        +---------------------+----------------------+
+                              |
+                    [Supabase (Postgres + Auth)]
+                              ^
+                [Next.js Dashboard] --HTTP--> FastAPI
 ```
 
-Detalhes completos em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md).
+O bot sobe no lifespan da API quando `TELEGRAM_MODE=webhook`. Operações sem usuário logado
+(bot, preview e aceite de convite) usam a `service_role` key no backend; o role `anon` não tem
+acesso às tabelas (migration 011).
+
+Design original em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md). Roteiro atual
+(produção, família, WhatsApp) em [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md).
 
 ## Funcionalidades
 
@@ -37,13 +46,13 @@ Detalhes completos em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md)
 
 | Camada | Tecnologia |
 |---|---|
-| Bot | python-telegram-bot v21 |
+| Bot | python-telegram-bot v22 (webhook dentro da API) |
 | Agente IA | Agno + Groq (llama-3.3-70b-versatile) |
 | Backend | Python 3.12, FastAPI, Uvicorn |
 | Banco | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (JWT via JWKS, chaves ES256) + JWT próprio do bot (HS256) |
 | Frontend | Next.js, Tailwind, shadcn/ui |
-| Deploy | Render (backend + bot) + Vercel (frontend) |
+| Deploy | Render (API + bot, um serviço) + Vercel (frontend) |
 
 ## Estrutura do repositório
 
@@ -72,20 +81,25 @@ specs/          # Design e planos de implementação
 
 ```bash
 cd backend
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-pip install -e ".[dev]"
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -e ".[dev]"
 ```
 
-Crie um `.env` a partir de `.env.example` e preencha:
+Crie um `.env` a partir de `.env.example`:
 
-```
-SUPABASE_URL=
-SUPABASE_KEY=
-SUPABASE_JWT_SECRET=
-TELEGRAM_BOT_TOKEN=
-GROQ_API_KEY=
-```
+| Variável | Uso |
+|---|---|
+| `SUPABASE_URL` | URL do projeto Supabase |
+| `SUPABASE_KEY` | anon key (pública), usada com o JWT do usuário |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role ou `sb_secret_...`. Só no backend, nunca no frontend |
+| `SUPABASE_JWT_SECRET` | secret JWT legado do Supabase; o bot assina os tokens dos usuários com ele |
+| `TELEGRAM_BOT_TOKEN` | token do @BotFather |
+| `GROQ_API_KEY` | chave do Groq |
+| `TELEGRAM_MODE` | `off` (só API), `webhook` (produção) ou `polling` (dev) |
+| `PUBLIC_BASE_URL` | URL pública da API (webhook). No Render, usa `RENDER_EXTERNAL_URL` se vazio |
+| `TELEGRAM_WEBHOOK_SECRET` | segredo do webhook. Gerar com `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `API_BASE_URL` | onde o bot em polling encontra a API (padrão `http://localhost:8000`) |
+| `CORS_ORIGINS` | origens do frontend separadas por vírgula |
 
 Rode as migrations em `backend/supabase/migrations/` (em ordem numérica) no SQL editor do Supabase.
 
@@ -108,25 +122,46 @@ NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=
 ## Rodando localmente
 
 ```bash
-# Backend (API)
+# API (TELEGRAM_MODE=off no .env)
 cd backend
-uvicorn app.main:app --reload
+.venv/bin/uvicorn app.main:app --reload
 
-# Bot Telegram
+# Bot em polling, em outro terminal (usa API_BASE_URL)
 cd backend
-python -m tgbot.runner
+.venv/bin/python -m tgbot.runner
 
 # Frontend
 cd frontend
 npm run dev
 ```
 
+Use um **bot de desenvolvimento separado** no @BotFather: o polling apaga o webhook do bot
+em que roda, o que derrubaria o bot de produção.
+
+## Deploy
+
+Backend e bot são **um único web service** no Render (`render.yaml` na raiz). Frontend na Vercel.
+
+Ordem (a migration 011 só funciona com o código novo no ar, porque o código antigo depende do role `anon`):
+
+1. No Render, criar o serviço pelo Blueprint e preencher as variáveis `sync: false`.
+2. Deploy do backend. No log deve aparecer `Bot ativo em modo webhook: https://.../telegram/webhook`.
+3. Aplicar `011_revoke_anon_access.sql` no Supabase.
+4. Na Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `NEXT_PUBLIC_API_URL` (URL do Render) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
+5. No Render, `CORS_ORIGINS` com o domínio da Vercel.
+
+No plano free o serviço hiberna sem tráfego; a primeira mensagem depois disso acorda o serviço
+e pode demorar. O Telegram reentrega updates que falharam.
+
 ## Testes
 
 ```bash
 cd backend
-pytest
+.venv/bin/pytest
 ```
+
+A suíte não precisa de `.env` (os valores padrão estão em `tests/conftest.py`).
 
 ## Status do projeto
 
@@ -134,4 +169,4 @@ Ver [`PENDENTE.md`](PENDENTE.md) para pendências em andamento e débitos técni
 
 ## Segurança
 
-Ver [`SECURITY.md`](SECURITY.md) para o levantamento de vulnerabilidades conhecidas — em especial, o item crítico sobre as policies de RLS permissivas para o role `anon` (necessárias hoje para o bot funcionar sem sessão de usuário, mas que expõem dados de todos os usuários para quem tiver a anon key).
+Ver [`SECURITY.md`](SECURITY.md) para o levantamento de vulnerabilidades conhecidas e o que já foi corrigido.
