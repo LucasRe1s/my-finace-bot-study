@@ -1,6 +1,6 @@
-# O que falta — my-finance-bot
+# O que falta: my-finance-bot
 
-> Atualizado em 07/10/2026. Fases 1 a 5 (producao, nucleo de canal, familia no privado, grupo do Telegram e WhatsApp) implementadas no codigo. Roteiro completo das proximas fases em
+> Atualizado em 07/10/2026. Fases 1 a 6 implementadas no codigo. Falta o deploy e o teste nos numeros reais. Roteiro completo das proximas fases em
 > [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md).
 
 ---
@@ -9,13 +9,13 @@
 
 | Plano | Tarefas | Status |
 |---|---|---|
-| P1 — Backend FastAPI | T1 a T8 + GET /groups/members | Completo |
-| P2 — Bot Telegram + Agente | T1 a T5 + auth por usuario | Completo |
-| P3 — Dashboard Next.js | T1 a T6 | Completo |
+| P1: Backend FastAPI | T1 a T8 + GET /groups/members | Completo |
+| P2: Bot Telegram + Agente | T1 a T5 + auth por usuario | Completo |
+| P3: Dashboard Next.js | T1 a T6 | Completo |
 | Agente Groq | Troca Claude Haiku por Groq llama-3.3-70b | Completo |
 | Auth bot sem formulario | JWT por usuario, bot_users via tabela users | Completo |
 | Migrations Supabase | 001 a 010 (schema, bot auth, grants, vinculo Telegram) | Completo |
-| AUTH-01 | 401 no dashboard web — validacao via JWKS (ES256) | Completo |
+| AUTH-01 | 401 no dashboard web: validacao via JWKS (ES256) | Completo |
 | Criar grupo | Endpoint, tool do bot e tela web | Completo |
 | Convite sem email | Link copiavel + pagina /convite/[token] (signup + accept) | Completo |
 | Vinculo Telegram | Codigo de uso unico, migra dados de identidade so-bot pre-existente | Completo |
@@ -35,6 +35,7 @@
 | Fase 3 | Desfazer o ultimo lancamento proprio (10 min) | Completo |
 | Fase 4 | Bot em grupo do Telegram: `/vincular`, `/desvincular`, `/f`, mencao e resposta; aprovacao de membro por botao; historico por pessoa no chat; migracao para supergrupo (migration 014) | Completo |
 | Fase 5 | WhatsApp pela Cloud API oficial, em paralelo ao Telegram: webhook com verificacao e assinatura, roteador de texto, convite `wa.me`, vinculo pelo painel | Completo |
+| Fase 6 | `?month=` invalido vira 422 (P1-T5); painel decide acesso com `getClaims()` (P3-T2); callback de login trata erro (P3-T2); senha minima de 10 no cadastro (SEC-03); limite de 5 codigos de vinculo a cada 10 min | Completo |
 | Fase 2 | Vinculo de conta: transfere posse do grupo antes de apagar a conta so-bot (evita cascade), descarta historico duplicado, recusa contas em grupos diferentes, codigo de uso unico atomico | Completo |
 
 ---
@@ -50,20 +51,10 @@ so pode ser aplicada depois que o backend novo (com `SUPABASE_SERVICE_ROLE_KEY`)
 
 Seguir a secao "WhatsApp" do README e validar o fluxo com o numero da Meta (o codigo foi testado contra uma Graph API simulada).
 
-### Fase 6
-
-Ver [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md):
-debitos tecnicos.
-
 ---
 
 ## Debitos tecnicos
 
 | Origem | Descricao |
 |---|---|
-| P1-T5 | `?month=` sem validacao de formato — ValueError vira 500 |
-| P3-T2 | `getSession()` no servidor — trocar por `getUser()` |
-| P3-T2 | Auth callback sem redirect quando `code` ausente |
-| ~~DEBUG-01~~ | ~~Remover `/debug/token` endpoint antes do deploy~~ — feito |
-| SEC-03 | Senha minima de 6 caracteres no signup via convite |
-| Fase 2 | Remover `users.telegram_id` e `_adopt_legacy_telegram_user` quando todos os usuarios tiverem identidade |
+| Fase 2 | Remover `users.telegram_id` e `_adopt_legacy_telegram_user` quando todos os usuarios tiverem identidade. Conferir com: `SELECT count(*) FROM users u WHERE telegram_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id AND i.channel = 'telegram');` (deve dar 0) |

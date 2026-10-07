@@ -113,6 +113,11 @@ Crie um `.env` a partir de `.env.example`:
 
 Rode as migrations em `backend/supabase/migrations/` (em ordem numérica) no SQL editor do Supabase.
 
+No painel do Supabase, em Authentication > Providers > Email, defina a **senha mínima em 10
+caracteres** e, se o plano permitir, ative a proteção contra senhas vazadas. O formulário do
+painel já exige 10, mas sem essa configuração alguém poderia se cadastrar direto pela API do
+Supabase com uma senha menor.
+
 ### Frontend
 
 ```bash

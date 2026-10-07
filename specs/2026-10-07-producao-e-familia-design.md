@@ -30,7 +30,7 @@ Cada fase gera software funcional e tem seu próprio plano de implementação em
 | 3 | Família no privado: convite pelo Telegram, nomes, desfazer | `2026-10-07-plan-6-familia-privado.md` |
 | 4 | Bot em grupo do Telegram | `2026-10-07-plan-7-grupo-telegram.md` |
 | 5 | Adaptador WhatsApp | `2026-10-07-plan-8-whatsapp.md` |
-| 6 | Débitos técnicos restantes | a escrever |
+| 6 | Débitos técnicos restantes | `2026-10-07-plan-9-debitos.md` |
 
 ---
 
@@ -217,7 +217,7 @@ Rate limit por usuário, nomes de membros, `/desfazer`: Fase 3. Débitos (`?mont
 | Origem | Correção |
 |---|---|
 | P1-T5 | `?month=` validado como `YYYY-MM`, 422 em vez de 500 |
-| P3-T2 | `getSession()` no servidor trocado por `getUser()` |
+| P3-T2 | `getSession()` no servidor trocado por `getClaims()` (verifica a assinatura localmente com as chaves assimétricas) |
 | P3-T2 | Auth callback redireciona para `/login` quando `code` ausente |
 | SEC-03 | Senha mínima de 10 caracteres + checagem de senha vazada no Supabase Auth |
 | SECURITY item 2 | Código de vínculo com 10 min e uso único já mitiga; avaliar confirmação no web |

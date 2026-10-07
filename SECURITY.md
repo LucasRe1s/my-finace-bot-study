@@ -2,7 +2,7 @@
 
 Levantamento das vulnerabilidades e pontos fracos conhecidos deste projeto. É um app pessoal/familiar, não um produto multi-tenant com terceiros desconhecidos. Mesmo assim, vale registrar o que está frágil, principalmente antes de um deploy público.
 
-> Atualizado em 07/10/2026, após as Fases 1 e 2 (`specs/2026-10-07-plan-4-producao.md`, `specs/2026-10-07-plan-5-nucleo-canal.md`).
+> Atualizado em 07/10/2026, após as Fases 1 a 6 (planos `specs/2026-10-07-plan-4` a `plan-9`).
 
 ## Médio
 
@@ -14,19 +14,13 @@ Levantamento das vulnerabilidades e pontos fracos conhecidos deste projeto. É u
 
 Os três precisam ser tratados como credenciais de altíssimo privilégio e rotacionados se houver suspeita de vazamento.
 
-### 2. Código de vínculo do Telegram pode ser usado por quem o vir
+### 2. Código de vínculo pode ser usado por quem o vir
 
-O vínculo confia que quem manda `/start <código>` no bot é a mesma pessoa que gerou o código no site. Quem vê o código (print de tela, mensagem encaminhada) consegue vincular a própria conta Telegram a ele dentro da janela de 10 minutos. O código é de uso único, e o endpoint público `POST /auth/telegram-link` não existe mais (o bot chama o serviço direto, dentro da API), então não dá para testar códigos por HTTP.
-
-### 3. Senha mínima de 6 caracteres no cadastro via convite
-
-`frontend/src/app/convite/[token]/page.tsx` pede `minLength={6}`. Fraco para uma senha de acesso a dados financeiros. Planejado na Fase 6: mínimo de 10 caracteres e checagem de senha vazada no Supabase Auth.
+O vínculo confia que quem manda `/start <código>` no bot (Telegram ou WhatsApp) é a mesma pessoa que gerou o código no site. Quem vê o código (print de tela, mensagem encaminhada) consegue vincular a própria conta a ele dentro da janela de 10 minutos. Mitigações atuais: uso único reivindicado atomicamente, validade de 10 minutos, consumo só dentro do bot (não há endpoint público) e no máximo 5 códigos a cada 10 minutos por usuário. Um segundo passo de confirmação na web foi avaliado na Fase 6 e não compensa o atrito para um app familiar.
 
 ## Baixo / observações
 
-- Não há rate limiting em `/auth/telegram-link-code` (baixo impacto, só spam de linhas na tabela). O bot tem limite por usuário (30 mensagens a cada 10 minutos, em memória) desde a Fase 2.
-- `invites.email` é validado como `str` livre, não `EmailStr`.
-- `?month=` em `/transactions` e `/summary` não valida formato: entrada malformada vira 500 em vez de 422.
+- Os limites (bot: 30 mensagens a cada 10 minutos; códigos de vínculo: 5 a cada 10 minutos) ficam em memória e valem por processo. Com um worker, como no `render.yaml`, isso basta.
 
 ## Já corrigido
 
@@ -34,6 +28,9 @@ O vínculo confia que quem manda `/start <código>` no bot é a mesma pessoa que
 - ~~**`invites_accept_update` aceitava qualquer convite.**~~ Policy removida na 011. `POST /groups/accept` agora reivindica o convite com um único `UPDATE ... WHERE token = ? AND accepted_at IS NULL` via client de serviço (só um aceite vence) e recusa com 409 quem já está em um grupo.
 - ~~**`group_members_insert_self` deixava qualquer autenticado entrar em qualquer grupo.**~~ Policy removida na 011. O insert do dono ao criar grupo segue coberto por `group_members_owner_all`; o do convidado roda como serviço depois de validar o token.
 - ~~**Vínculo de conta podia apagar dados.**~~ Ao fundir uma conta só-bot na conta web, o usuário antigo era apagado sem transferir `groups.owner_id` (`ON DELETE CASCADE` apagava o grupo e as transações). Corrigido em `app/services/identities.py`. O código de vínculo também passou a ser reivindicado atomicamente.
+- ~~**Painel decidia acesso com `getSession()`**~~, que só lê o cookie sem verificar a assinatura. Proxy, layout e página inicial usam `getClaims()`; um cookie com JWT forjado agora é recusado.
+- ~~**Senha mínima de 6 caracteres no cadastro.**~~ Agora 10 no formulário; o mínimo também precisa ser configurado no painel do Supabase (ver README), porque o frontend sozinho não impede cadastro direto pela API do Supabase.
+- ~~`?month=` malformado virava 500~~ (agora 422) e ~~`invites.email` aceitava qualquer texto~~ (agora `EmailStr`).
 - ~~**CORS liberado para qualquer origem.**~~ Agora `allow_origins` vem de `CORS_ORIGINS`.
 - ~~`/debug/token` expunha o payload do JWT sem verificar assinatura.~~ Endpoint removido.
 - ~~Backend validava só HS256, rejeitando os tokens ES256 do Supabase.~~ Verificação via JWKS.
