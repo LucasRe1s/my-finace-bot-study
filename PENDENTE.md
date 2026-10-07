@@ -27,6 +27,7 @@
 | CORS-01 | Origens via `CORS_ORIGINS` | Completo |
 | OPENAI-01 | `OPENAI_API_KEY` removida das settings | Completo |
 | Deploy (codigo) | `render.yaml` com um unico web service | Completo |
+| FRONT-01 | `apiFetch` mostra so o `detail` da API em vez do JSON cru | Completo |
 
 ---
 
@@ -56,4 +57,3 @@ WhatsApp e debitos tecnicos.
 | P3-T6 | `family/page.tsx` exibe user_id truncado — melhorar com tabela profiles |
 | ~~DEBUG-01~~ | ~~Remover `/debug/token` endpoint antes do deploy~~ — feito |
 | SEC-03 | Senha minima de 6 caracteres no signup via convite |
-| FRONT-01 | Pagina de convite mostra o erro cru da API (`API error 409: {...}`); exibir so o `detail` |

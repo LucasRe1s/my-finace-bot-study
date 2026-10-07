@@ -54,10 +54,31 @@ async function apiFetch<T>(
     },
   });
   if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`API error ${res.status}: ${error}`);
+    throw new ApiError(res.status, await readErrorMessage(res));
   }
   return res.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+// O FastAPI devolve {"detail": "..."} nos HTTPException e {"detail": [{msg}]}
+// nos erros de validacao (422). Mostra so o texto, nunca o JSON cru.
+async function readErrorMessage(res: Response): Promise<string> {
+  const fallback = `Erro inesperado (${res.status}). Tente novamente.`;
+  const body = await res.text();
+  try {
+    const { detail } = JSON.parse(body);
+    if (typeof detail === "string" && detail) return detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg);
+  } catch {
+    // corpo nao e JSON (ex.: 502 do proxy)
+  }
+  return fallback;
 }
 
 export async function getSummary(
