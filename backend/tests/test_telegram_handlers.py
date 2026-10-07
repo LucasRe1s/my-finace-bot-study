@@ -34,7 +34,9 @@ async def test_message_is_converted_and_replies_are_sent():
 
     msg = process.call_args.args[0]
     assert msg == IncomingMessage(channel="telegram", external_user_id="555", display_name="Ana", chat_id="555", text="Qual meu saldo?")
-    assert process.call_args.kwargs == {"api_base_url": "http://internal", "transport": "transport"}
+    kwargs = process.call_args.kwargs
+    assert kwargs["api_base_url"] == "http://internal" and kwargs["transport"] == "transport"
+    assert kwargs["invite_link"]("abc").endswith("?start=join_abc")
     sent = [c.kwargs for c in context.bot.send_message.call_args_list]
     assert sent == [{"chat_id": 555, "text": "Saldo"}, {"chat_id": 555, "text": "ALERTA"}]
 
@@ -59,3 +61,17 @@ async def test_help_sends_help_text():
     update, context = _update(text="/ajuda"), _context()
     await handle_help(update, context)
     context.bot.send_message.assert_awaited_once_with(chat_id=555, text=HELP_TEXT)
+
+
+@pytest.mark.asyncio
+async def test_invite_command_uses_telegram_deep_link():
+    from tgbot.handlers import handle_invite
+
+    update, context = _update(text="/convidar"), _context()
+    context.bot.username = "finncyBot"
+    with patch("tgbot.handlers.invite_command", return_value=[OutgoingMessage("555", "link")]) as cmd:
+        await handle_invite(update, context)
+
+    link = cmd.call_args.args[1]
+    assert link("abc") == "https://t.me/finncyBot?start=join_abc"
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text="link")

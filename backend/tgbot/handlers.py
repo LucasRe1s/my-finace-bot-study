@@ -6,7 +6,7 @@ from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from app.config import settings
-from core.conversation import help_message, process_message, process_start
+from core.conversation import help_message, invite_command, process_message, process_start
 from core.messages import IncomingMessage, OutgoingMessage
 
 
@@ -25,6 +25,15 @@ async def _send(context: ContextTypes.DEFAULT_TYPE, outgoing: list[OutgoingMessa
         await context.bot.send_message(chat_id=int(out.chat_id), text=out.text)
 
 
+def _invite_link(context: ContextTypes.DEFAULT_TYPE):
+    username = context.bot.username
+    return lambda token: f"https://t.me/{username}?start=join_{token}"
+
+
+async def handle_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(context, invite_command(_incoming(update), _invite_link(context)))
+
+
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     code = context.args[0] if context.args else None
     await _send(context, process_start(_incoming(update), code))
@@ -40,5 +49,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         _incoming(update),
         api_base_url=context.bot_data.get("api_base_url", settings.api_base_url),
         transport=context.bot_data.get("api_transport"),
+        invite_link=_invite_link(context),
     )
     await _send(context, outgoing)

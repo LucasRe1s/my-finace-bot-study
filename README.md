@@ -38,11 +38,15 @@ Design original em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md). R
 - Definir limite mensal por categoria, com alerta ao atingir 80%/100%
 - Criar o grupo financeiro (`criar_grupo`) quando ainda não tiver um
 - Vincular a conta do Telegram a uma conta web já existente via `/start <código>`
+- `/convidar`: gera um link `t.me/<bot>?start=join_<token>` (uso único, 7 dias); quem abre entra no grupo sem cadastro web
+- Desfazer o último lançamento próprio feito nos últimos 10 minutos
+- Extrato mostra quem lançou cada transação
 
 **Pelo dashboard web:**
 - Resumo financeiro, extrato e limites por categoria
 - Criar grupo financeiro (se ainda não tiver um)
-- Convidar familiares por link (não há envio de email — o link é gerado e copiado manualmente)
+- Convidar familiares por link (não há envio de email: o link é gerado e copiado manualmente)
+- Membros do grupo e autor de cada transação aparecem pelo nome
 - Gerar código para vincular o Telegram à conta web
 
 ## Stack
@@ -155,8 +159,9 @@ Ordem (a migration 011 só funciona com o código novo no ar, porque o código a
    `NEXT_PUBLIC_API_URL` (URL do Render) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
 5. No Render, `CORS_ORIGINS` com o domínio da Vercel.
 
-Migrations novas depois do primeiro deploy: a `012_user_identities.sql` só adiciona, então pode
-ser aplicada antes do deploy do código que a usa. Usuários antigos (só com `users.telegram_id`)
+Migrations novas depois do primeiro deploy: a `012_user_identities.sql` e a
+`013_invites_expiry_optional_email.sql` só adicionam, então podem ser aplicadas antes do deploy
+do código que as usa. Usuários antigos (só com `users.telegram_id`)
 são adotados automaticamente na primeira mensagem.
 
 No plano free o serviço hiberna sem tráfego; a primeira mensagem depois disso acorda o serviço

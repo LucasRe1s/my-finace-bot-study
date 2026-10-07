@@ -1,6 +1,6 @@
 # O que falta — my-finance-bot
 
-> Atualizado em 07/10/2026. Fases 1 (producao) e 2 (nucleo de canal) implementadas no codigo. Roteiro completo das proximas fases em
+> Atualizado em 07/10/2026. Fases 1 (producao), 2 (nucleo de canal) e 3 (familia no privado) implementadas no codigo. Roteiro completo das proximas fases em
 > [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md).
 
 ---
@@ -30,6 +30,9 @@
 | FRONT-01 | `apiFetch` mostra so o `detail` da API em vez do JSON cru | Completo |
 | Fase 2 | `user_identities` (migration 012), nucleo `core/` independente de canal, Telegram como adaptador | Completo |
 | Fase 2 | Rate limit por usuario no bot (30 mensagens / 10 min) | Completo |
+| Fase 3 | `/convidar` e `/start join_<token>`: familia entra no grupo so pelo Telegram (migration 013: convite com validade de 7 dias e email opcional) | Completo |
+| Fase 3 | Nomes de membros e autor de cada transacao (API, bot e painel) | Completo |
+| Fase 3 | Desfazer o ultimo lancamento proprio (10 min) | Completo |
 | Fase 2 | Vinculo de conta: transfere posse do grupo antes de apagar a conta so-bot (evita cascade), descarta historico duplicado, recusa contas em grupos diferentes, codigo de uso unico atomico | Completo |
 
 ---
@@ -41,10 +44,10 @@
 Passo a passo na secao "Deploy" do [`README.md`](README.md). Atencao a ordem: a migration 011
 so pode ser aplicada depois que o backend novo (com `SUPABASE_SERVICE_ROLE_KEY`) estiver no ar.
 
-### Fases 3 a 6
+### Fases 4 a 6
 
 Ver [`specs/2026-10-07-producao-e-familia-design.md`](specs/2026-10-07-producao-e-familia-design.md):
-familia no privado (convite pelo Telegram), bot em grupo do Telegram, WhatsApp e debitos tecnicos.
+bot em grupo do Telegram, WhatsApp e debitos tecnicos.
 
 ---
 
@@ -52,11 +55,9 @@ familia no privado (convite pelo Telegram), bot em grupo do Telegram, WhatsApp e
 
 | Origem | Descricao |
 |---|---|
-| P1-T4 | `InviteCreate.email` usa `str` em vez de `EmailStr` |
 | P1-T5 | `?month=` sem validacao de formato — ValueError vira 500 |
 | P3-T2 | `getSession()` no servidor — trocar por `getUser()` |
 | P3-T2 | Auth callback sem redirect quando `code` ausente |
-| P3-T6 | `family/page.tsx` exibe user_id truncado — melhorar com tabela profiles |
 | ~~DEBUG-01~~ | ~~Remover `/debug/token` endpoint antes do deploy~~ — feito |
 | SEC-03 | Senha minima de 6 caracteres no signup via convite |
 | Fase 2 | Remover `users.telegram_id` e `_adopt_legacy_telegram_user` quando todos os usuarios tiverem identidade |

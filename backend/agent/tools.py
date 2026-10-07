@@ -4,6 +4,7 @@ import inspect
 import json
 import re
 from datetime import date as DateType
+from typing import Callable
 
 from core.alerts import limit_alert_message
 
@@ -58,6 +59,7 @@ def build_tools(
     api_base_url: str = "http://localhost:8000",
     transport: httpx.AsyncBaseTransport | None = None,
     alert_sink: list[str] | None = None,
+    invite_link: Callable[[str], str] | None = None,
 ) -> list:
     headers = {"Authorization": f"Bearer {user_token}"}
 
@@ -161,10 +163,36 @@ def build_tools(
         lines = [f"Extrato -- {len(transactions)} transação(ões):"]
         for t in transactions[:20]:
             tipo = "+" if t["type"] == "income" else "-"
-            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}")
+            autor = f" | {t['user_name']}" if t.get("user_name") else ""
+            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}{autor}")
         if len(transactions) > 20:
             lines.append(f"  ... e mais {len(transactions) - 20} transação(ões).")
         return "\n".join(lines)
+
+    async def desfazer_ultima_transacao() -> str:
+        """Desfaz (apaga) a última transação registrada pelo próprio usuário nos últimos 10 minutos.
+        Use somente depois que o usuário confirmar."""
+        async with _client() as client:
+            response = await client.post("/transactions/undo-last", headers=headers)
+        if response.status_code == 200:
+            tx = response.json()
+            tipo = "Receita" if tx["type"] == "income" else "Despesa"
+            descricao = tx.get("description") or "sem descrição"
+            return f"Transação desfeita: {tipo} de {_fmt_brl(tx['amount'])} em {tx['category']} ({descricao})."
+        if response.status_code == 404:
+            return "Não há transação sua registrada nos últimos 10 minutos para desfazer."
+        return f"Erro ao desfazer transação: {response.text}"
+
+    async def gerar_convite() -> str:
+        """Gera um link de convite (uso único, válido por 7 dias) para um familiar entrar no grupo financeiro."""
+        if invite_link is None:
+            return "Este canal ainda não gera links de convite. Gere o convite pelo painel web."
+        async with _client() as client:
+            response = await client.post("/groups/invite", json={}, headers=headers)
+        if response.status_code == 201:
+            link = invite_link(response.json()["token"])
+            return f"Convite criado. Envie este link ao familiar (uso único, válido por 7 dias):\n{link}"
+        return f"Erro ao gerar convite: {response.text}"
 
     async def consultar_resumo(month: str = None) -> str:
         """Consulta o resumo financeiro do mês com saldo e gastos por categoria.
@@ -238,7 +266,9 @@ def build_tools(
     return [
         registrar_transacao,
         criar_grupo,
+        gerar_convite,
         consultar_extrato,
+        desfazer_ultima_transacao,
         consultar_resumo,
         consultar_limites,
         definir_limite,

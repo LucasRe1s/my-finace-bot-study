@@ -66,8 +66,8 @@ export default async function FamilyPage() {
               key={m.user_id}
               className="flex items-center justify-between py-1"
             >
-              <span className="text-sm text-gray-600 font-mono">
-                {m.user_id.slice(0, 8)}...
+              <span className="text-sm text-gray-700">
+                {m.name || `${m.user_id.slice(0, 8)}...`}
               </span>
               <Badge variant={m.role === "owner" ? "default" : "secondary"}>
                 {m.role === "owner" ? "Proprietario" : "Membro"}
@@ -83,9 +83,9 @@ export default async function FamilyPage() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-gray-500 mb-4">
-            Envie um convite por email para adicionar um familiar ao seu grupo
-            financeiro. O convidado recebera acesso ao painel compartilhado apos
-            aceitar o convite.
+            Gere um link para adicionar um familiar ao grupo. Pelo Telegram é
+            mais simples: mande /convidar para o bot e envie o link que ele
+            devolver. Quem abrir o link entra no grupo sem precisar de cadastro.
           </p>
           <InviteForm token={token} />
         </CardContent>

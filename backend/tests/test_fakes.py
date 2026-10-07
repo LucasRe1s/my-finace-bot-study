@@ -31,3 +31,10 @@ def test_is_null_and_gte_filters():
     ]
     rows = db.table("codes").select("*").is_("used_at", "null").gte("expires_at", "2026-01-01").execute().data
     assert [r["code"] for r in rows] == ["A"]
+
+
+def test_in_and_order():
+    db = FakeSupabase()
+    db.tables["t"] = [{"id": "a", "n": 2}, {"id": "b", "n": 3}, {"id": "c", "n": 1}]
+    rows = db.table("t").select("*").in_("id", ["a", "c"]).order("n", desc=True).execute().data
+    assert [r["id"] for r in rows] == ["a", "c"]

@@ -55,3 +55,9 @@ def test_user_identities_has_rls_and_no_anon():
 def test_user_identities_backfills_telegram_ids():
     sql = _sql("012_user_identities.sql")
     assert re.search(r"INSERT INTO public\.user_identities.*FROM public\.users.*telegram_id IS NOT NULL", sql, re.S)
+
+
+def test_invites_email_optional_and_expiring():
+    sql = _sql("013_invites_expiry_optional_email.sql")
+    assert "ALTER COLUMN email DROP NOT NULL" in sql
+    assert re.search(r"ADD COLUMN expires_at TIMESTAMPTZ NOT NULL DEFAULT \(NOW\(\) \+ INTERVAL '7 days'\)", sql)

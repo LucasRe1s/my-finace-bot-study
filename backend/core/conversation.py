@@ -2,12 +2,15 @@
 WhatsApp na Fase 5) convertem a mensagem do canal em IncomingMessage e enviam
 as OutgoingMessage devolvidas."""
 import logging
+from typing import Callable
 
 from agent.bot import create_agent
 from agent.history import get_history, save_history
 from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
 from app.database import get_service_supabase
+from app.services.invites import AlreadyInGroup, InviteNotFound, accept_invite, create_invite
 from app.services.identities import InvalidLinkCode, LinkConflict, get_or_create_user, link_identity
+from app.services.membership import find_user_group, group_name
 from app.services.user_token import generate_user_token
 
 from .messages import IncomingMessage, OutgoingMessage
@@ -17,12 +20,15 @@ logger = logging.getLogger("bot")
 
 FALLBACK_REPLY = "Desculpe, tive um problema para processar sua mensagem. Pode tentar novamente?"
 RATE_LIMIT_REPLY = "Você enviou muitas mensagens em pouco tempo. Aguarde alguns minutos e tente novamente."
+JOIN_PREFIX = "join_"
 HELP_TEXT = (
     "Comandos disponíveis:\n\n"
     "/start: iniciar ou reiniciar o assistente\n"
+    "/convidar: gerar link de convite para um familiar\n"
     "/ajuda: exibir esta mensagem\n\n"
     "O que posso fazer por você:\n"
     "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
+    "- Desfazer o último lançamento ('Desfaz o último')\n"
     "- Consultar saldo do mês ('Qual meu saldo?')\n"
     "- Ver extrato ('Mostre meus gastos de junho')\n"
     "- Resumo por categoria ('Quanto gastei com alimentação?')\n"
@@ -49,7 +55,13 @@ def _with_history(history: list[dict], text: str) -> str:
     return "\n".join(lines) + f"Usuário: {text}"
 
 
-async def process_message(msg: IncomingMessage, *, api_base_url: str, transport=None) -> list[OutgoingMessage]:
+async def process_message(
+    msg: IncomingMessage,
+    *,
+    api_base_url: str,
+    transport=None,
+    invite_link: Callable[[str], str] | None = None,
+) -> list[OutgoingMessage]:
     who = f"{msg.channel}:{msg.external_user_id}"
     if not limiter.allow(who):
         logger.warning("[%s] Rate limit atingido", who)
@@ -66,6 +78,7 @@ async def process_message(msg: IncomingMessage, *, api_base_url: str, transport=
             api_base_url=api_base_url,
             transport=transport,
             alert_sink=alerts,
+            invite_link=invite_link,
         )
         logger.info("[%s] Mensagem recebida: %s", who, msg.text[:80])
         response = await create_agent(tools).arun(_with_history(history[-10:], msg.text))
@@ -91,6 +104,8 @@ async def process_message(msg: IncomingMessage, *, api_base_url: str, transport=
 
 def process_start(msg: IncomingMessage, code: str | None) -> list[OutgoingMessage]:
     db = get_service_supabase()
+    if code and code.startswith(JOIN_PREFIX):
+        return _reply(msg, _join(db, msg, code[len(JOIN_PREFIX):]))
     if code:
         return _reply(msg, _link(db, msg, code))
 
@@ -123,7 +138,7 @@ def _link(db, msg: IncomingMessage, code: str) -> str:
     except LinkConflict:
         return (
             "Não foi possível vincular: esta conta e a conta do painel já participam de grupos "
-            "financeiros diferentes. Saia de um dos grupos e gere um novo código."
+            "financeiros diferentes, e não é possível juntar os dois."
         )
     except Exception:
         logger.exception("Falha inesperada ao vincular %s:%s", msg.channel, msg.external_user_id)
@@ -132,6 +147,44 @@ def _link(db, msg: IncomingMessage, code: str) -> str:
         "Conta vinculada com sucesso.\n\n"
         "Suas transações e limites agora são os mesmos do painel web."
     )
+
+
+def _join(db, msg: IncomingMessage, token: str) -> str:
+    try:
+        user, _ = get_or_create_user(db, msg.channel, msg.external_user_id, msg.display_name)
+        group_id = accept_invite(db, token, user["id"])
+    except InviteNotFound:
+        return "Convite inválido, expirado ou já utilizado. Peça um novo link a quem convidou você."
+    except AlreadyInGroup:
+        return "Você já participa de um grupo financeiro e não pode entrar em outro."
+    except Exception:
+        logger.exception("Falha ao entrar no grupo %s:%s", msg.channel, msg.external_user_id)
+        return "Não foi possível entrar no grupo agora. Tente novamente em instantes."
+    return (
+        f"Você entrou no grupo {group_name(db, group_id)}.\n\n"
+        "Agora é só me contar seus gastos e receitas, por exemplo: 'Gastei R$ 50,00 no mercado'.\n"
+        "Use /ajuda para ver tudo o que posso fazer."
+    )
+
+
+def invite_command(msg: IncomingMessage, invite_link: Callable[[str], str]) -> list[OutgoingMessage]:
+    db = get_service_supabase()
+    try:
+        user, _ = get_or_create_user(db, msg.channel, msg.external_user_id, msg.display_name)
+        group_id = find_user_group(db, user["id"])
+        if group_id is None:
+            return _reply(msg, (
+                "Você ainda não tem um grupo financeiro. "
+                "Diga 'criar grupo' para criar um e depois use /convidar."
+            ))
+        invite = create_invite(db, group_id, user["id"])
+    except Exception:
+        logger.exception("Falha ao gerar convite %s:%s", msg.channel, msg.external_user_id)
+        return _reply(msg, "Não foi possível gerar o convite agora. Tente novamente em instantes.")
+    return _reply(msg, (
+        "Envie este link ao familiar (uso único, válido por 7 dias):\n"
+        f"{invite_link(invite['token'])}"
+    ))
 
 
 def help_message(msg: IncomingMessage) -> list[OutgoingMessage]:

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 
 from supabase import Client
 
+from .membership import find_user_group
+
 logger = logging.getLogger("api")
 
 
@@ -49,6 +51,11 @@ def _adopt_legacy_telegram_user(db: Client, external_id: str) -> dict | None:
 def get_or_create_user(db: Client, channel: str, external_id: str, display_name: str) -> tuple[dict, bool]:
     user = find_user_by_identity(db, channel, external_id)
     if user:
+        # Conta web nasce com o email como nome; o nome do canal e melhor.
+        current = user.get("name") or ""
+        if display_name and (not current or "@" in current):
+            db.table("users").update({"name": display_name}).eq("id", user["id"]).execute()
+            user = {**user, "name": display_name}
         return user, False
 
     created = db.table("users").insert({"name": display_name}).execute().data[0]
@@ -66,11 +73,6 @@ def get_or_create_user(db: Client, channel: str, external_id: str, display_name:
         return user, False
     logger.info("Novo usuario %s:%s (%s)", channel, external_id, display_name)
     return created, True
-
-
-def _group_of(db: Client, user_id: str) -> str | None:
-    result = db.table("group_members").select("group_id").eq("user_id", user_id).limit(1).execute()
-    return result.data[0]["group_id"] if result.data else None
 
 
 def link_identity(db: Client, code: str, channel: str, external_id: str) -> None:
@@ -92,7 +94,7 @@ def link_identity(db: Client, code: str, channel: str, external_id: str) -> None
     current = find_user_by_identity(db, channel, external_id)
     old_id = current["id"] if current and current["id"] != target_id else None
     if old_id:
-        old_group, target_group = _group_of(db, old_id), _group_of(db, target_id)
+        old_group, target_group = find_user_group(db, old_id), find_user_group(db, target_id)
         if old_group and target_group and old_group != target_group:
             raise LinkConflict()
 

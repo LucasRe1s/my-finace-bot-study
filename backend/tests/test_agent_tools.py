@@ -199,3 +199,66 @@ async def test_registrar_transacao_appends_limit_alert_to_sink():
 
     assert len(alerts) == 1
     assert "95% do limite mensal de Lazer" in alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_consultar_extrato_shows_author():
+    from fastapi import FastAPI
+
+    api = FastAPI()
+
+    @api.get("/transactions/")
+    async def listar():
+        return [{"amount": 50.0, "type": "expense", "category": "Lazer", "description": "Cinema",
+                 "date": "2026-10-07", "user_name": "Bia"}]
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api))
+    extrato = next(t for t in tools if t.__name__ == "consultar_extrato")
+
+    assert "Cinema | 2026-10-07 | Bia" in await extrato()
+
+
+@pytest.mark.asyncio
+async def test_desfazer_ultima_transacao():
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    api = FastAPI()
+    state = {"calls": 0}
+
+    @api.post("/transactions/undo-last")
+    async def undo():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {"amount": 50.0, "type": "expense", "category": "Lazer", "description": "Cinema"}
+        return JSONResponse({"detail": "nada"}, status_code=404)
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api))
+    desfazer = next(t for t in tools if t.__name__ == "desfazer_ultima_transacao")
+
+    assert await desfazer() == "Transação desfeita: Despesa de R$ 50,00 em Lazer (Cinema)."
+    assert "nos últimos 10 minutos" in await desfazer()
+
+
+@pytest.mark.asyncio
+async def test_gerar_convite_returns_channel_link():
+    from fastapi import FastAPI
+
+    api = FastAPI()
+
+    @api.post("/groups/invite", status_code=201)
+    async def invite():
+        return {"token": "abc"}
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api),
+                        invite_link=lambda t: f"https://t.me/finncyBot?start=join_{t}")
+    gerar = next(t for t in tools if t.__name__ == "gerar_convite")
+
+    assert "https://t.me/finncyBot?start=join_abc" in await gerar()
+
+
+@pytest.mark.asyncio
+async def test_gerar_convite_without_channel_link():
+    tools = build_tools("tok", "http://internal")
+    gerar = next(t for t in tools if t.__name__ == "gerar_convite")
+    assert "painel web" in await gerar()

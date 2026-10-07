@@ -44,6 +44,8 @@ class TransactionCreate(BaseModel):
 
 class Transaction(TransactionCreate):
     id: str
-    user_id: str
+    # NULL quando o autor foi apagado (FK ON DELETE SET NULL).
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
     group_id: str
     created_at: str

@@ -1,12 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class InviteCreate(BaseModel):
-    email: str
-
-
-class InviteResponse(BaseModel):
-    id: str
-    email: str
-    group_id: str
-    token: str
+    # Opcional: convites gerados no bot nao tem email.
+    email: EmailStr | None = None

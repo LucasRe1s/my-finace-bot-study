@@ -20,6 +20,7 @@ export default function ConvitePage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("signup");
   const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "confirm-email">(
     "idle"
   );
@@ -41,11 +42,13 @@ export default function ConvitePage() {
     setStatus("loading");
     setErrorMsg(null);
 
+    // Convite gerado pelo bot nao tem email: a pessoa informa o dela.
+    const inviteEmail = preview.email ?? email;
     const { data, error } =
       mode === "signup"
-        ? await supabase.auth.signUp({ email: preview.email, password })
+        ? await supabase.auth.signUp({ email: inviteEmail, password })
         : await supabase.auth.signInWithPassword({
-            email: preview.email,
+            email: inviteEmail,
             password,
           });
 
@@ -91,7 +94,7 @@ export default function ConvitePage() {
 
           {preview && status === "confirm-email" && (
             <p className="text-sm text-gray-600">
-              Enviamos um email de confirmação para <strong>{preview.email}</strong>.
+              Enviamos um email de confirmação para <strong>{preview.email ?? email}</strong>.
               Confirme sua conta e volte nesse mesmo link pra entrar no grupo
               &quot;{preview.group_name}&quot;.
             </p>
@@ -104,10 +107,24 @@ export default function ConvitePage() {
                 <strong>{preview.group_name}</strong>.
               </p>
 
-              <div className="space-y-1">
-                <Label>Email</Label>
-                <Input type="email" value={preview.email} disabled readOnly />
-              </div>
+              {preview.email ? (
+                <div className="space-y-1">
+                  <Label>Email</Label>
+                  <Input type="email" value={preview.email} disabled readOnly />
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <Label htmlFor="email">Seu email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <Label htmlFor="password">
