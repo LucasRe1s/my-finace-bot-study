@@ -175,3 +175,27 @@ async def test_tools_call_api_in_process_via_transport():
 
     assert "Nenhum limite configurado" in result
     assert seen["auth"] == "Bearer fake-token"
+
+
+@pytest.mark.asyncio
+async def test_registrar_transacao_appends_limit_alert_to_sink():
+    from fastapi import FastAPI
+
+    api = FastAPI()
+
+    @api.post("/transactions/", status_code=201)
+    async def create():
+        return {"id": "t1", "date": "2026-10-07"}
+
+    @api.get("/limits/")
+    async def limits():
+        return [{"category": "Lazer", "spent": 950.0, "monthly_limit": 1000.0, "percent_used": 95}]
+
+    alerts: list[str] = []
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api), alert_sink=alerts)
+    registrar = next(t for t in tools if t.__name__ == "registrar_transacao")
+
+    await registrar(amount=50.0, type="expense", category="Lazer")
+
+    assert len(alerts) == 1
+    assert "95% do limite mensal de Lazer" in alerts[0]
