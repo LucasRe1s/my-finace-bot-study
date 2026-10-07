@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getVerifiedAccessToken } from "@/lib/supabase-server";
 import { getGroupMembers } from "@/lib/api";
 import { InviteForm } from "@/components/invite-form";
 import { CreateGroupForm } from "@/components/create-group-form";
@@ -7,11 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 export default async function FamilyPage() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token ?? "";
+  const token = (await getVerifiedAccessToken()) ?? "";
 
   const members = token ? await getGroupMembers(token).catch(() => [] as import("@/lib/api").GroupMember[]) : [];
   const hasGroup = members.length > 0;

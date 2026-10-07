@@ -18,3 +18,18 @@ export async function createSupabaseServerClient() {
     }
   );
 }
+
+/**
+ * Token do usuario para chamar a API, so depois de verificar a assinatura do
+ * JWT com getClaims(). getSession() sozinho le o cookie sem verificar e nao
+ * deve decidir acesso. (A API tambem valida o token.)
+ */
+export async function getVerifiedAccessToken(): Promise<string | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return null;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.access_token ?? null;
+}

@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getVerifiedAccessToken } from "@/lib/supabase-server";
 import { getSummary, getLimits } from "@/lib/api";
 import { BalanceCard } from "@/components/balance-card";
 import { CategoryBar } from "@/components/category-bar";
@@ -6,9 +6,7 @@ import { TelegramLink } from "@/components/telegram-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function DashboardPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token ?? "";
+  const token = (await getVerifiedAccessToken()) ?? "";
 
   const today = new Date();
   const month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
