@@ -101,7 +101,7 @@ async def test_lifespan_webhook_registers_and_stops(monkeypatch):
     ptb.bot.set_webhook.assert_awaited_once_with(
         url="https://api.example.com/telegram/webhook",
         secret_token=SECRET,
-        allowed_updates=["message"],
+        allowed_updates=["message", "callback_query"],
     )
     ptb.stop.assert_awaited_once()
     ptb.shutdown.assert_awaited_once()

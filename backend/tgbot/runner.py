@@ -1,9 +1,24 @@
 # -*- coding: utf-8 -*-
 import httpx
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
-from .handlers import handle_start, handle_help, handle_invite, handle_message
+from .handlers import (
+    handle_bind,
+    handle_button,
+    handle_f,
+    handle_help,
+    handle_invite,
+    handle_message,
+    handle_migration,
+    handle_new_members,
+    handle_start,
+    handle_unbind,
+)
+
 from app.config import settings
+
+# callback_query: cliques nos botoes (aprovacao de membro no grupo).
+ALLOWED_UPDATES = ["message", "callback_query"]
 
 
 def build_app(
@@ -25,6 +40,12 @@ def build_app(
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("ajuda", handle_help))
     app.add_handler(CommandHandler("convidar", handle_invite))
+    app.add_handler(CommandHandler("vincular", handle_bind))
+    app.add_handler(CommandHandler("desvincular", handle_unbind))
+    app.add_handler(CommandHandler("f", handle_f))
+    app.add_handler(CallbackQueryHandler(handle_button))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
+    app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, handle_migration))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     return app
@@ -43,7 +64,7 @@ def main():
 
     app = build_app(api_base_url=settings.api_base_url)
     logging.getLogger("bot").info("Bot iniciado em modo polling. API em %s", settings.api_base_url)
-    app.run_polling(allowed_updates=["message"])
+    app.run_polling(allowed_updates=ALLOWED_UPDATES)
 
 
 if __name__ == "__main__":
