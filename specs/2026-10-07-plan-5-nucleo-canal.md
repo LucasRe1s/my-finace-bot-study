@@ -1010,7 +1010,7 @@ def test_start_with_code_links(db):
     with patch.object(conversation, "link_identity") as link:
         out = process_start(MSG, "ABC12345")
     link.assert_called_once_with(db, "ABC12345", "telegram", "555")
-    assert "vinculado" in out[0].text.lower()
+    assert "vinculada com sucesso" in out[0].text.lower()
 
 
 def test_start_with_invalid_code(db):
