@@ -4,6 +4,7 @@ import inspect
 import json
 import re
 from datetime import date as DateType
+from typing import Callable
 
 from core.alerts import limit_alert_message
 
@@ -58,6 +59,7 @@ def build_tools(
     api_base_url: str = "http://localhost:8000",
     transport: httpx.AsyncBaseTransport | None = None,
     alert_sink: list[str] | None = None,
+    invite_link: Callable[[str], str] | None = None,
 ) -> list:
     headers = {"Authorization": f"Bearer {user_token}"}
 
@@ -181,6 +183,17 @@ def build_tools(
             return "Não há transação sua registrada nos últimos 10 minutos para desfazer."
         return f"Erro ao desfazer transação: {response.text}"
 
+    async def gerar_convite() -> str:
+        """Gera um link de convite (uso único, válido por 7 dias) para um familiar entrar no grupo financeiro."""
+        if invite_link is None:
+            return "Este canal ainda não gera links de convite. Gere o convite pelo painel web."
+        async with _client() as client:
+            response = await client.post("/groups/invite", json={}, headers=headers)
+        if response.status_code == 201:
+            link = invite_link(response.json()["token"])
+            return f"Convite criado. Envie este link ao familiar (uso único, válido por 7 dias):\n{link}"
+        return f"Erro ao gerar convite: {response.text}"
+
     async def consultar_resumo(month: str = None) -> str:
         """Consulta o resumo financeiro do mês com saldo e gastos por categoria.
 
@@ -253,6 +266,7 @@ def build_tools(
     return [
         registrar_transacao,
         criar_grupo,
+        gerar_convite,
         consultar_extrato,
         desfazer_ultima_transacao,
         consultar_resumo,

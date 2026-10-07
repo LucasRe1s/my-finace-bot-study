@@ -1,12 +1,17 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 
 from core import conversation
-from core.conversation import FALLBACK_REPLY, RATE_LIMIT_REPLY, process_message, process_start
+from core.conversation import FALLBACK_REPLY, RATE_LIMIT_REPLY, invite_command, process_message, process_start
 from core.messages import IncomingMessage, OutgoingMessage
 from core.rate_limit import SlidingWindowLimiter
 from tests.fakes import FakeSupabase
+
+LINK = lambda token: f"https://t.me/finncyBot?start=join_{token}"  # noqa: E731
+_FUTURE = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
 
 MSG = IncomingMessage(channel="telegram", external_user_id="555", display_name="Ana", chat_id="555", text="Qual meu saldo?")
 
@@ -18,7 +23,10 @@ def fresh_limiter(monkeypatch):
 
 @pytest.fixture
 def db(monkeypatch):
-    fake = FakeSupabase(unique={"user_identities": [("channel", "external_id")]})
+    fake = FakeSupabase(
+        unique={"user_identities": [("channel", "external_id")]},
+        defaults={"invites": lambda: {"token": str(uuid4()), "accepted_at": None, "expires_at": _FUTURE}},
+    )
     monkeypatch.setattr(conversation, "get_service_supabase", lambda: fake)
     return fake
 
@@ -149,3 +157,69 @@ def test_start_with_unexpected_error(db):
     with patch.object(conversation, "link_identity", side_effect=RuntimeError("db fora")):
         out = process_start(MSG, "ABC12345")
     assert "tente novamente" in out[0].text.lower()
+
+
+def _group_with_invite(db, token="tok"):
+    db.tables["groups"] = [{"id": "g1", "name": "Família Silva"}]
+    db.tables["invites"] = [{"id": "i1", "group_id": "g1", "token": token, "accepted_at": None, "expires_at": _FUTURE}]
+
+
+def test_start_join_adds_new_user_to_group(db):
+    _group_with_invite(db)
+
+    out = process_start(MSG, "join_tok")
+
+    assert "Família Silva" in out[0].text
+    user_id = db.tables["user_identities"][0]["user_id"]
+    assert db.tables["group_members"][0]["user_id"] == user_id
+
+
+def test_start_join_with_used_invite(db):
+    _group_with_invite(db)
+    db.tables["invites"][0]["accepted_at"] = "2026-10-01T00:00:00+00:00"
+
+    out = process_start(MSG, "join_tok")
+
+    assert "inválido, expirado ou já utilizado" in out[0].text
+
+
+def test_start_join_when_already_in_group(db):
+    _group_with_invite(db)
+    process_start(MSG, None)
+    user_id = db.tables["user_identities"][0]["user_id"]
+    db.tables["group_members"] = [{"id": "m", "group_id": "outro", "user_id": user_id, "role": "owner"}]
+
+    out = process_start(MSG, "join_tok")
+
+    assert "já participa de um grupo" in out[0].text
+
+
+def test_invite_command_returns_link(db):
+    process_start(MSG, None)
+    user_id = db.tables["user_identities"][0]["user_id"]
+    db.tables["group_members"] = [{"id": "m", "group_id": "g1", "user_id": user_id, "role": "owner"}]
+
+    out = invite_command(MSG, LINK)
+
+    token = db.tables["invites"][0]["token"]
+    assert f"https://t.me/finncyBot?start=join_{token}" in out[0].text
+
+
+def test_invite_command_without_group(db):
+    out = invite_command(MSG, LINK)
+    assert "ainda não tem um grupo" in out[0].text
+    assert "invites" not in db.tables
+
+
+@pytest.mark.asyncio
+async def test_process_message_passes_invite_link_to_tools(db):
+    captured = {}
+
+    def fake_build_tools(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    with patch.object(conversation, "create_agent", return_value=_agent_replying("ok")), patch.object(conversation, "build_tools", side_effect=fake_build_tools):
+        await process_message(MSG, api_base_url="http://internal", invite_link=LINK)
+
+    assert captured["invite_link"] is LINK

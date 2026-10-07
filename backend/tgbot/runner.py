@@ -2,7 +2,7 @@
 import httpx
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from .handlers import handle_start, handle_help, handle_message
+from .handlers import handle_start, handle_help, handle_invite, handle_message
 from app.config import settings
 
 
@@ -24,6 +24,7 @@ def build_app(
 
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("ajuda", handle_help))
+    app.add_handler(CommandHandler("convidar", handle_invite))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     return app

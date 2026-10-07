@@ -238,3 +238,27 @@ async def test_desfazer_ultima_transacao():
 
     assert await desfazer() == "Transação desfeita: Despesa de R$ 50,00 em Lazer (Cinema)."
     assert "nos últimos 10 minutos" in await desfazer()
+
+
+@pytest.mark.asyncio
+async def test_gerar_convite_returns_channel_link():
+    from fastapi import FastAPI
+
+    api = FastAPI()
+
+    @api.post("/groups/invite", status_code=201)
+    async def invite():
+        return {"token": "abc"}
+
+    tools = build_tools("tok", "http://internal", transport=httpx.ASGITransport(app=api),
+                        invite_link=lambda t: f"https://t.me/finncyBot?start=join_{t}")
+    gerar = next(t for t in tools if t.__name__ == "gerar_convite")
+
+    assert "https://t.me/finncyBot?start=join_abc" in await gerar()
+
+
+@pytest.mark.asyncio
+async def test_gerar_convite_without_channel_link():
+    tools = build_tools("tok", "http://internal")
+    gerar = next(t for t in tools if t.__name__ == "gerar_convite")
+    assert "painel web" in await gerar()
