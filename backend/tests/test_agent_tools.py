@@ -154,3 +154,24 @@ async def test_resolve_leaked_tool_call_malformed_json_returns_fallback():
     leaked = '<function=registrar_transacao>{amount: 100 sem aspas}</function>'
     result = await resolve_leaked_tool_call(leaked, tools)
     assert result == "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
+
+
+@pytest.mark.asyncio
+async def test_tools_call_api_in_process_via_transport():
+    from fastapi import FastAPI, Request
+
+    api = FastAPI()
+    seen = {}
+
+    @api.get("/limits/")
+    async def limits(request: Request):
+        seen["auth"] = request.headers.get("authorization")
+        return []
+
+    tools = build_tools("fake-token", "http://internal", transport=httpx.ASGITransport(app=api))
+    consultar = next(t for t in tools if t.__name__ == "consultar_limites")
+
+    result = await consultar()
+
+    assert "Nenhum limite configurado" in result
+    assert seen["auth"] == "Bearer fake-token"
