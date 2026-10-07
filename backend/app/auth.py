@@ -12,7 +12,7 @@ logger = logging.getLogger("api")
 # Tokens emitidos pelo Supabase Auth deste projeto sao assinados com uma chave
 # assimetrica (ES256), verificada via JWKS. Ja os tokens que o bot Telegram gera
 # para seus proprios usuarios (que nao tem sessao Supabase) usam HS256 com o
-# secret compartilhado -- ver tgbot/handlers.py::_generate_user_token.
+# secret compartilhado -- ver app/services/user_token.py::generate_user_token.
 _jwks_client = PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
 
 

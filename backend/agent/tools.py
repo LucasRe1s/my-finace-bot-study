@@ -5,6 +5,8 @@ import json
 import re
 from datetime import date as DateType
 
+from core.alerts import limit_alert_message
+
 _LEAKED_FUNCTION_CALL = re.compile(r"<function=(\w+)>(\{.*?\})</function>", re.DOTALL)
 
 _FALLBACK_MESSAGE = "Desculpe, não consegui processar sua solicitação. Poderia tentar novamente?"
@@ -54,9 +56,8 @@ def is_raw_provider_error(reply: str) -> bool:
 def build_tools(
     user_token: str,
     api_base_url: str = "http://localhost:8000",
-    bot=None,
-    telegram_id=None,
     transport: httpx.AsyncBaseTransport | None = None,
+    alert_sink: list[str] | None = None,
 ) -> list:
     headers = {"Authorization": f"Bearer {user_token}"}
 
@@ -94,19 +95,14 @@ def build_tools(
                 json=payload,
                 headers=headers,
             )
-            if response.status_code == 201 and bot and telegram_id:
+            if response.status_code == 201 and alert_sink is not None:
                 limits_response = await client.get("/limits/", headers=headers)
                 if limits_response.status_code == 200:
                     for lim in limits_response.json():
                         if lim["category"] == category:
-                            from tgbot.alerts import check_and_send_alerts
-                            await check_and_send_alerts(
-                                bot=bot,
-                                telegram_id=telegram_id,
-                                category=category,
-                                spent=lim["spent"],
-                                monthly_limit=lim["monthly_limit"],
-                            )
+                            alert = limit_alert_message(category, lim["spent"], lim["monthly_limit"])
+                            if alert:
+                                alert_sink.append(alert)
         if response.status_code == 201:
             tx = response.json()
             tipo = "Receita" if type == "income" else "Despesa"

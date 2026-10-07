@@ -20,7 +20,10 @@ Bot de auxílio financeiro pessoal/familiar via Telegram, com entrada de dados e
                 [Next.js Dashboard] --HTTP--> FastAPI
 ```
 
-O bot sobe no lifespan da API quando `TELEGRAM_MODE=webhook`. Operações sem usuário logado
+O bot sobe no lifespan da API quando `TELEGRAM_MODE=webhook`. A lógica de conversa fica em
+`backend/core/` e não conhece o Telegram: recebe uma `IncomingMessage` e devolve `OutgoingMessage`s.
+`backend/tgbot/` é só o adaptador do canal (o WhatsApp será outro adaptador). Cada pessoa é
+identificada por canal na tabela `user_identities`. Operações sem usuário logado
 (bot, preview e aceite de convite) usam a `service_role` key no backend; o role `anon` não tem
 acesso às tabelas (migration 011).
 
@@ -60,7 +63,8 @@ Design original em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md). R
 backend/
   app/          # FastAPI: rotas, auth, config, database
   agent/        # Agente Agno (bot.py, tools.py, prompts.py, history.py)
-  tgbot/        # Handlers e runner do bot Telegram
+  core/         # Núcleo de conversa independente de canal (rate limit, alertas)
+  tgbot/        # Adaptador Telegram: handlers, runner (polling) e webhook
   supabase/     # Migrations SQL
   tests/        # Testes pytest
 frontend/       # Dashboard Next.js
@@ -150,6 +154,10 @@ Ordem (a migration 011 só funciona com o código novo no ar, porque o código a
 4. Na Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
    `NEXT_PUBLIC_API_URL` (URL do Render) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
 5. No Render, `CORS_ORIGINS` com o domínio da Vercel.
+
+Migrations novas depois do primeiro deploy: a `012_user_identities.sql` só adiciona, então pode
+ser aplicada antes do deploy do código que a usa. Usuários antigos (só com `users.telegram_id`)
+são adotados automaticamente na primeira mensagem.
 
 No plano free o serviço hiberna sem tráfego; a primeira mensagem depois disso acorda o serviço
 e pode demorar. O Telegram reentrega updates que falharam.
