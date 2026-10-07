@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import httpx
 import jwt
 import logging
 from datetime import datetime, timezone, timedelta
@@ -13,7 +12,8 @@ from agent.bot import create_agent
 from agent.history import get_history, save_history
 from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
 from app.config import settings
-from app.database import get_supabase
+from app.database import get_service_supabase
+from app.services.telegram_link import InvalidLinkCode, link_telegram_account
 
 
 def _generate_user_token(user_id: str) -> str:
@@ -48,25 +48,18 @@ async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[di
     return insert_result.data[0], True
 
 
-async def _link_telegram_account(telegram_id: int, code: str, api_base_url: str) -> str:
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_base_url}/auth/telegram-link",
-            json={"code": code, "telegram_id": telegram_id},
-        )
-    if response.status_code == 200:
-        return (
-            "Telegram vinculado à sua conta com sucesso.\n\n"
-            "Suas transações e limites agora são os mesmos do painel web."
-        )
-    if response.status_code == 404:
+def _link_telegram_account(telegram_id: int, code: str) -> str:
+    try:
+        link_telegram_account(get_service_supabase(), code, telegram_id)
+    except InvalidLinkCode:
         return "Não foi possível vincular sua conta: código inválido ou expirado."
-
-    logger.warning(
-        "Falha inesperada ao vincular telegram_id=%s: status=%s body=%s",
-        telegram_id, response.status_code, response.text[:300],
+    except Exception:
+        logger.exception("Falha inesperada ao vincular telegram_id=%s", telegram_id)
+        return "Não foi possível vincular sua conta agora. Tente novamente em instantes."
+    return (
+        "Telegram vinculado à sua conta com sucesso.\n\n"
+        "Suas transações e limites agora são os mesmos do painel web."
     )
-    return "Não foi possível vincular sua conta agora. Tente novamente em instantes."
 
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -74,12 +67,10 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     first_name = update.effective_user.first_name or "usuário"
 
     if context.args:
-        api_base_url = context.bot_data.get("api_base_url", "http://localhost:8000")
-        msg = await _link_telegram_account(telegram_id, context.args[0], api_base_url)
-        await update.message.reply_text(msg)
+        await update.message.reply_text(_link_telegram_account(telegram_id, context.args[0]))
         return
 
-    db = get_supabase()
+    db = get_service_supabase()
 
     user, is_new = await _get_or_create_user(db, telegram_id, first_name)
 
@@ -121,7 +112,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
     user_message = update.message.text
-    db = get_supabase()
+    db = get_service_supabase()
 
     user, _ = await _get_or_create_user(db, telegram_id, update.effective_user.first_name or "")
     if not user:

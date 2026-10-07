@@ -18,7 +18,7 @@ async def test_start_command_registers_new_user():
     mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = None
     mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
 
-    with patch("tgbot.handlers.get_supabase", return_value=mock_db):
+    with patch("tgbot.handlers.get_service_supabase", return_value=mock_db):
         with patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, True)):
             await handle_start(update, context)
 
@@ -28,7 +28,7 @@ async def test_start_command_registers_new_user():
 
 
 @pytest.mark.asyncio
-async def test_start_command_with_link_code_calls_link_endpoint():
+async def test_start_command_with_link_code_links_account():
     from tgbot.handlers import handle_start
 
     update = MagicMock()
@@ -38,39 +38,35 @@ async def test_start_command_with_link_code_calls_link_endpoint():
 
     context = MagicMock()
     context.args = ["ABC12345"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
 
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+    service_db = MagicMock()
+    with (
+        patch("tgbot.handlers.get_service_supabase", return_value=service_db),
+        patch("tgbot.handlers.link_telegram_account") as link,
+    ):
         await handle_start(update, context)
 
-    sent_json = mock_client.return_value.__aenter__.return_value.post.call_args.kwargs["json"]
-    assert sent_json == {"code": "ABC12345", "telegram_id": 123456789}
+    link.assert_called_once_with(service_db, "ABC12345", 123456789)
     reply = update.message.reply_text.call_args[0][0]
     assert "vinculado" in reply.lower()
 
 
 @pytest.mark.asyncio
 async def test_start_command_with_invalid_code_shows_code_error():
+    from app.services.telegram_link import InvalidLinkCode
     from tgbot.handlers import handle_start
 
     update = MagicMock()
     update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
     update.message.reply_text = AsyncMock()
 
     context = MagicMock()
     context.args = ["EXPIRADO"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
 
-    mock_response = MagicMock()
-    mock_response.status_code = 404
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+    with (
+        patch("tgbot.handlers.get_service_supabase", return_value=MagicMock()),
+        patch("tgbot.handlers.link_telegram_account", side_effect=InvalidLinkCode()),
+    ):
         await handle_start(update, context)
 
     reply = update.message.reply_text.call_args[0][0]
@@ -78,24 +74,20 @@ async def test_start_command_with_invalid_code_shows_code_error():
 
 
 @pytest.mark.asyncio
-async def test_start_command_with_server_error_shows_generic_retry():
+async def test_start_command_with_unexpected_error_shows_generic_retry():
     from tgbot.handlers import handle_start
 
     update = MagicMock()
     update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
     update.message.reply_text = AsyncMock()
 
     context = MagicMock()
     context.args = ["ABC12345"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
 
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_response.text = "Internal Server Error"
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+    with (
+        patch("tgbot.handlers.get_service_supabase", return_value=MagicMock()),
+        patch("tgbot.handlers.link_telegram_account", side_effect=RuntimeError("db fora")),
+    ):
         await handle_start(update, context)
 
     reply = update.message.reply_text.call_args[0][0]
@@ -131,7 +123,7 @@ async def test_handle_message_replaces_raw_provider_error_with_fallback():
     }
 
     with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
+        patch("tgbot.handlers.get_service_supabase", return_value=mock_db),
         patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
         patch("tgbot.handlers.create_agent", return_value=mock_agent),
         patch("tgbot.handlers.get_history", return_value=[]),
@@ -169,7 +161,7 @@ async def test_handle_message_calls_agent():
     }
 
     with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
+        patch("tgbot.handlers.get_service_supabase", return_value=mock_db),
         patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
         patch("tgbot.handlers.create_agent", return_value=mock_agent),
         patch("tgbot.handlers.get_history", return_value=[]),
@@ -217,7 +209,7 @@ async def test_handle_message_resolves_leaked_tool_call():
         saved_history["history"] = history
 
     with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
+        patch("tgbot.handlers.get_service_supabase", return_value=mock_db),
         patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
         patch("tgbot.handlers.create_agent", return_value=mock_agent),
         patch("tgbot.handlers.get_history", return_value=[]),
