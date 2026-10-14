@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from .handlers import handle_start, handle_help, handle_message
+from .handlers import handle_start, handle_help, handle_message, handle_voice
 from app.config import settings
 
 
@@ -13,6 +13,7 @@ def build_app(api_base_url: str = "http://localhost:8000") -> Application:
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("ajuda", handle_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
     return app
 

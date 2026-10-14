@@ -9,9 +9,13 @@ from telegram.ext import ContextTypes
 
 logger = logging.getLogger("bot")
 
+# Limite de download de arquivos da Bot API do Telegram
+MAX_AUDIO_BYTES = 20 * 1024 * 1024
+
 from agent.bot import create_agent
 from agent.history import get_history, save_history
 from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
+from agent.transcription import transcribe_audio
 from app.config import settings
 from app.database import get_supabase
 
@@ -107,7 +111,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         "Comandos disponíveis:\n\n"
         "/start — Iniciar ou reiniciar o assistente\n"
         "/ajuda — Exibir esta mensagem\n\n"
-        "O que posso fazer por você:\n"
+        "O que posso fazer por você (por texto ou áudio):\n"
         "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
         "- Consultar saldo do mês ('Qual meu saldo?')\n"
         "- Ver extrato ('Mostre meus gastos de junho')\n"
@@ -119,8 +123,43 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _process_user_message(update, context, update.message.text)
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     telegram_id = update.effective_user.id
-    user_message = update.message.text
+    media = update.message.voice or update.message.audio
+
+    if media.file_size and media.file_size > MAX_AUDIO_BYTES:
+        await update.message.reply_text(
+            "O áudio é muito longo para ser processado. Envie uma gravação mais curta."
+        )
+        return
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    try:
+        tg_file = await media.get_file()
+        audio = bytes(await tg_file.download_as_bytearray())
+        text = await transcribe_audio(audio)
+    except Exception:
+        logger.exception("[%s] Falha ao transcrever áudio", telegram_id)
+        await update.message.reply_text(
+            "Não foi possível processar o áudio agora. Tente novamente ou envie por texto."
+        )
+        return
+
+    if not text:
+        await update.message.reply_text(
+            "Não consegui entender o áudio. Pode repetir ou enviar por texto?"
+        )
+        return
+
+    logger.info("[%s] Áudio transcrito: %s", telegram_id, text[:80])
+    await _process_user_message(update, context, text)
+
+
+async def _process_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str) -> None:
+    telegram_id = update.effective_user.id
     db = get_supabase()
 
     user, _ = await _get_or_create_user(db, telegram_id, update.effective_user.first_name or "")

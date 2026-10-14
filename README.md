@@ -21,7 +21,7 @@ Detalhes completos em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md)
 ## Funcionalidades
 
 **Pelo Telegram:**
-- Registrar receitas/despesas em linguagem natural, com confirmação antes de gravar
+- Registrar receitas/despesas em linguagem natural (texto ou áudio, transcrito via Whisper no Groq), com confirmação antes de gravar
 - Consultar extrato, resumo mensal e limites por categoria
 - Definir limite mensal por categoria, com alerta ao atingir 80%/100%
 - Criar o grupo financeiro (`criar_grupo`) quando ainda não tiver um

@@ -231,3 +231,89 @@ async def test_handle_message_resolves_leaked_tool_call():
     assert "<function=" not in reply_sent
     assert "R$ 1.180,00" in reply_sent
     assert "<function=" not in saved_history["history"][-1]["content"]
+
+
+def _voice_update(file_size: int = 1000):
+    update = MagicMock()
+    update.effective_user.id = 123456789
+    update.effective_user.first_name = "Lucas"
+    update.message.text = None
+    update.message.audio = None
+    update.message.voice.file_size = file_size
+    tg_file = MagicMock()
+    tg_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"fake-ogg"))
+    update.message.voice.get_file = AsyncMock(return_value=tg_file)
+    update.message.reply_text = AsyncMock()
+    update.message.chat.send_action = AsyncMock()
+    return update
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_transcribes_and_sends_text_to_agent():
+    from tgbot.handlers import handle_voice
+
+    update = _voice_update()
+    context = MagicMock()
+    context.bot_data = {"api_base_url": "http://localhost:8000"}
+
+    mock_agent = MagicMock()
+    mock_agent.arun = AsyncMock(return_value=MagicMock(content="Confirmo o registro..."))
+
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="Gastei 50 reais no mercado")) as mock_transcribe,
+        patch("tgbot.handlers.get_supabase", return_value=MagicMock()),
+        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
+        patch("tgbot.handlers.create_agent", return_value=mock_agent),
+        patch("tgbot.handlers.get_history", return_value=[]),
+        patch("tgbot.handlers.save_history", return_value=None),
+        patch("tgbot.handlers.build_tools", return_value=[]),
+    ):
+        await handle_voice(update, context)
+
+    assert mock_transcribe.call_args.args[0] == b"fake-ogg"
+    assert "Gastei 50 reais no mercado" in mock_agent.arun.call_args.args[0]
+    assert update.message.reply_text.call_args[0][0] == "Confirmo o registro..."
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_with_empty_transcription_asks_to_repeat():
+    from tgbot.handlers import handle_voice
+
+    update = _voice_update()
+    context = MagicMock()
+
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="")),
+        patch("tgbot.handlers.create_agent") as mock_create_agent,
+    ):
+        await handle_voice(update, context)
+
+    mock_create_agent.assert_not_called()
+    assert "não consegui entender" in update.message.reply_text.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_rejects_files_over_limit():
+    from tgbot.handlers import handle_voice
+
+    update = _voice_update(file_size=25 * 1024 * 1024)
+    context = MagicMock()
+
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as mock_transcribe:
+        await handle_voice(update, context)
+
+    mock_transcribe.assert_not_called()
+    assert "muito longo" in update.message.reply_text.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_transcription_failure_shows_retry():
+    from tgbot.handlers import handle_voice
+
+    update = _voice_update()
+    context = MagicMock()
+
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock(side_effect=RuntimeError("groq down"))):
+        await handle_voice(update, context)
+
+    assert "tente novamente" in update.message.reply_text.call_args[0][0].lower()
