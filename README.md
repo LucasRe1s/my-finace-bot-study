@@ -220,42 +220,45 @@ em que roda, o que derrubaria o bot de produção.
 
 ## Deploy
 
-Tudo na Vercel, em projetos separados apontando para o mesmo repositório. O `vercel.json` de cada
-pasta faz a Vercel pular o build quando o commit não mexe nela.
+Dois projetos na Vercel apontando para o mesmo repositório:
 
-| Projeto | Root Directory |
-|---|---|
-| API + bots (Python serverless) | `backend` |
-| Dashboard | `frontend` |
-| Pedidos (módulo independente) | `pedidos` |
+| Projeto | Root Directory | Conteúdo |
+|---|---|---|
+| Assessor (Finncy) | raiz do repositório | `vercel.json` com Vercel Services: `finncy-api` (backend) + `frontend` (dashboard) |
+| Pedidos | `pedidos` | módulo independente (ver `pedidos/README.md`) |
 
-### Backend (`backend/`)
+### Assessor (Vercel Services)
 
-A Vercel injeta `VERCEL=1`, que liga o modo serverless: o webhook do Telegram/WhatsApp é
-processado dentro da própria requisição (sem fila em background, que a função congelaria) e
-reentregas são descartadas pela tabela `processed_updates`.
+Um domínio só. O `vercel.json` da raiz define:
 
-1. Aplicar `015_processed_updates.sql` no Supabase (aditiva).
-2. Criar o projeto na Vercel com Root Directory = `backend`. Variáveis: todas do `.env.example`
-   com `TELEGRAM_MODE=webhook` (`PUBLIC_BASE_URL` não é necessário) e `CORS_ORIGINS` com o
-   domínio do dashboard.
+- `finncy-api` (`backend/`, FastAPI): público em `/api/*`. Recebe o caminho original (`/api/...`);
+  `backend/api/index.py` aceita com e sem o prefixo.
+- `frontend` (`frontend/`, Next.js): público em todo o resto. Páginas do servidor chamam a API pelo
+  binding interno `FINNCY_API_URL` (injetado pela Vercel); o navegador chama `/api` no mesmo domínio.
+
+A Vercel injeta `VERCEL=1`, que liga o modo serverless do backend: o webhook do Telegram/WhatsApp é
+processado dentro da própria requisição e reentregas são descartadas pela tabela `processed_updates`.
+
+1. Aplicar as migrations (`backend/supabase/migrations/001` a `015`) no Supabase.
+2. Criar o projeto na Vercel com Root Directory = raiz do repositório. Variáveis (compartilhadas
+   pelos dois serviços): as do `backend/.env.example` com `TELEGRAM_MODE=webhook`, mais
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
+   **Não** definir `NEXT_PUBLIC_API_URL` nem `FINNCY_API_URL` (o navegador usa `/api` e o binding é
+   gerado pela Vercel). `CORS_ORIGINS` não é necessário (mesmo domínio).
 3. Após o deploy, registrar o webhook (substitui qualquer webhook/polling anterior do bot):
 
 ```bash
 cd backend
-python -m tgbot.set_webhook https://<projeto-backend>.vercel.app
+python -m tgbot.set_webhook https://<dominio>/api
 ```
 
-4. WhatsApp (se usado): apontar o webhook no painel da Meta para `https://<projeto-backend>.vercel.app/whatsapp/webhook`.
+4. WhatsApp (se usado): webhook da Meta em `https://<dominio>/api/whatsapp/webhook`.
 
-### Dashboard (`frontend/`)
-
-Variáveis: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-`NEXT_PUBLIC_API_URL` (URL do projeto backend) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
+Teste local de tudo junto: `npx vercel dev -L` na raiz (injeta o binding).
 
 ### Render (alternativa)
 
-O `render.yaml` continua válido: backend e bot como um web service sempre ligado
+O `render.yaml` continua válido para o backend: web service sempre ligado
 (`TELEGRAM_MODE=webhook` + `PUBLIC_BASE_URL`), com a fila em background. No plano free o
 serviço hiberna e a primeira mensagem depois disso demora.
 

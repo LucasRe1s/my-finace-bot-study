@@ -1,4 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Vercel Services: no servidor a API e alcancada pelo binding interno
+// FINNCY_API_URL (injetado em runtime, sem passar pela internet); no navegador
+// pelo rewrite publico /api do mesmo dominio. Em dev local os dois caem em
+// NEXT_PUBLIC_API_URL (ex.: http://localhost:8000).
+function apiBase(): string {
+  const base =
+    typeof window === "undefined"
+      ? process.env.FINNCY_API_URL ?? process.env.NEXT_PUBLIC_API_URL
+      : process.env.NEXT_PUBLIC_API_URL;
+  return (base ?? "/api").replace(/\/$/, "");
+}
 
 export type Transaction = {
   id: string;
@@ -48,7 +58,7 @@ async function apiFetch<T>(
   token: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -167,7 +177,7 @@ export type InvitePreview = {
 export async function getInvitePreview(
   inviteToken: string
 ): Promise<InvitePreview> {
-  const res = await fetch(`${API_URL}/groups/invite/${inviteToken}`);
+  const res = await fetch(`${apiBase()}/groups/invite/${inviteToken}`);
   if (!res.ok) {
     const error = await res.text();
     throw new Error(`API error ${res.status}: ${error}`);
