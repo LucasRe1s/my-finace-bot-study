@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getVerifiedAccessToken } from "@/lib/supabase-server";
 import { getTransactions } from "@/lib/api";
 import { TransactionTable } from "@/components/transaction-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,15 +10,12 @@ type Props = {
 export default async function TransactionsPage({ searchParams }: Props) {
   const params = await searchParams;
 
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token ?? "";
+  const token = (await getVerifiedAccessToken()) ?? "";
 
   const today = new Date();
   const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const month = params.month ?? currentMonth;
+  // Mes invalido na URL (a API responderia 422): usa o mes atual.
+  const month = params.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month) ? params.month : currentMonth;
 
   const transactions = await getTransactions(token, {
     month,

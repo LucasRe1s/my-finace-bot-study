@@ -34,3 +34,18 @@ def test_save_history_trims_to_10():
     call_args = mock_db.table.return_value.upsert.call_args[0][0]
     assert len(call_args["messages"]) == 10
     assert call_args["messages"][0]["content"] == "msg 5"
+
+
+def test_group_history_is_separate_per_chat():
+    from tests.fakes import FakeSupabase
+
+    db = FakeSupabase()
+    save_history(db, "u1", [{"role": "user", "content": "privado"}])
+    save_history(db, "u1", [{"role": "user", "content": "grupo A"}], chat_key="telegram:-1")
+    save_history(db, "u1", [{"role": "user", "content": "grupo A de novo"}], chat_key="telegram:-1")
+    save_history(db, "u1", [{"role": "user", "content": "grupo B"}], chat_key="telegram:-2")
+
+    assert get_history(db, "u1")[0]["content"] == "privado"
+    assert get_history(db, "u1", "telegram:-1")[0]["content"] == "grupo A de novo"
+    assert get_history(db, "u1", "telegram:-2")[0]["content"] == "grupo B"
+    assert len(db.tables["group_chat_history"]) == 2

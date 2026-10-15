@@ -33,15 +33,15 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // getClaims verifica a assinatura do JWT; getSession so leria o cookie.
+  const { data } = await supabase.auth.getClaims();
+  const isAuthenticated = Boolean(data?.claims);
 
-  if (isProtectedRoute && !session) {
+  if (isProtectedRoute && !isAuthenticated) {
     return NextResponse.redirect(new URL("/login", request.nextUrl));
   }
 
-  if (isPublicRoute && session && !pathname.startsWith("/dashboard")) {
+  if (isPublicRoute && isAuthenticated && !pathname.startsWith("/dashboard")) {
     return NextResponse.redirect(new URL("/dashboard", request.nextUrl));
   }
 

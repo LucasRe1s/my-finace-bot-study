@@ -37,6 +37,7 @@ export function TransactionTable({ transactions }: TransactionTableProps) {
         <TableRow>
           <TableHead>Data</TableHead>
           <TableHead>Descrição</TableHead>
+          <TableHead>Quem</TableHead>
           <TableHead>Categoria</TableHead>
           <TableHead>Tipo</TableHead>
           <TableHead className="text-right">Valor</TableHead>
@@ -49,6 +50,7 @@ export function TransactionTable({ transactions }: TransactionTableProps) {
               {formatDate(t.date)}
             </TableCell>
             <TableCell>{t.description}</TableCell>
+            <TableCell className="text-gray-500">{t.user_name || "-"}</TableCell>
             <TableCell>
               <Badge variant="outline">{t.category}</Badge>
             </TableCell>

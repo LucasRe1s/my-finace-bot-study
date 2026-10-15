@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 @pytest.mark.asyncio
 async def test_transcribe_audio_sends_bytes_to_groq_whisper():
-    from agent.transcription import transcribe_audio
+    from core.transcription import transcribe_audio
 
     mock_client = MagicMock()
     mock_client.audio.transcriptions.create = AsyncMock(return_value=MagicMock(text="  Gastei 50 reais no mercado  "))
 
-    with patch("agent.transcription.AsyncGroq", return_value=mock_client):
+    with patch("core.transcription.AsyncGroq", return_value=mock_client):
         text = await transcribe_audio(b"fake-ogg", filename="voice.ogg")
 
     assert text == "Gastei 50 reais no mercado"

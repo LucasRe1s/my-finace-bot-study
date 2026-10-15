@@ -1,319 +1,293 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
-@pytest.mark.asyncio
-async def test_start_command_registers_new_user():
-    from tgbot.handlers import handle_start, _get_or_create_user
+from core.messages import IncomingMessage, OutgoingMessage
 
+
+def _update(text="oi", user_id=555, chat_id=555, first_name="Ana", chat_type="private", message_id=7, reply_to_bot=False):
     update = MagicMock()
-    update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
-    update.message.reply_text = AsyncMock()
+    update.effective_user.id = user_id
+    update.effective_user.first_name = first_name
+    update.effective_chat.id = chat_id
+    update.effective_chat.type = chat_type
+    update.effective_chat.send_action = AsyncMock()
+    update.message.text = text
+    update.message.message_id = message_id
+    if reply_to_bot:
+        update.message.reply_to_message.from_user.id = 999
+    else:
+        update.message.reply_to_message = None
+    return update
 
+
+def _context(args=None):
     context = MagicMock()
-    context.args = []
-
-    mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = None
-    mock_db.table.return_value.insert.return_value.execute.return_value.data = [{}]
-
-    with patch("tgbot.handlers.get_supabase", return_value=mock_db):
-        with patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, True)):
-            await handle_start(update, context)
-
-    update.message.reply_text.assert_called_once()
-    call_args = update.message.reply_text.call_args[0][0]
-    assert "Lucas" in call_args or "bem-vindo" in call_args.lower()
+    context.args = args or []
+    context.bot.send_message = AsyncMock()
+    context.bot_data = {"api_base_url": "http://internal", "api_transport": "transport"}
+    context.bot.id = 999
+    context.bot.username = "finncyBot"
+    return context
 
 
 @pytest.mark.asyncio
-async def test_start_command_with_link_code_calls_link_endpoint():
-    from tgbot.handlers import handle_start
-
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
-    update.message.reply_text = AsyncMock()
-
-    context = MagicMock()
-    context.args = ["ABC12345"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
-        await handle_start(update, context)
-
-    sent_json = mock_client.return_value.__aenter__.return_value.post.call_args.kwargs["json"]
-    assert sent_json == {"code": "ABC12345", "telegram_id": 123456789}
-    reply = update.message.reply_text.call_args[0][0]
-    assert "vinculado" in reply.lower()
-
-
-@pytest.mark.asyncio
-async def test_start_command_with_invalid_code_shows_code_error():
-    from tgbot.handlers import handle_start
-
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
-    update.message.reply_text = AsyncMock()
-
-    context = MagicMock()
-    context.args = ["EXPIRADO"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    mock_response = MagicMock()
-    mock_response.status_code = 404
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
-        await handle_start(update, context)
-
-    reply = update.message.reply_text.call_args[0][0]
-    assert "código inválido ou expirado" in reply.lower()
-
-
-@pytest.mark.asyncio
-async def test_start_command_with_server_error_shows_generic_retry():
-    from tgbot.handlers import handle_start
-
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
-    update.message.reply_text = AsyncMock()
-
-    context = MagicMock()
-    context.args = ["ABC12345"]
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_response.text = "Internal Server Error"
-
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
-        await handle_start(update, context)
-
-    reply = update.message.reply_text.call_args[0][0]
-    assert "código" not in reply.lower()
-    assert "tente novamente" in reply.lower()
-
-
-@pytest.mark.asyncio
-async def test_handle_message_replaces_raw_provider_error_with_fallback():
+async def test_message_is_converted_and_replies_are_sent():
     from tgbot.handlers import handle_message
 
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.message.text = "sim"
-    update.message.reply_text = AsyncMock()
-    update.message.chat.send_action = AsyncMock()
-
-    context = MagicMock()
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    raw_error = (
-        '{"error":{"message":"Failed to call a function.","type":"invalid_request_error",'
-        '"code":"tool_use_failed","failed_generation":"..."}}'
-    )
-    mock_agent = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = raw_error
-    mock_agent.arun = AsyncMock(return_value=mock_response)
-
-    mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
-        "id": "user-uuid", "telegram_id": 123456789
-    }
-
-    with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
-        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
-        patch("tgbot.handlers.create_agent", return_value=mock_agent),
-        patch("tgbot.handlers.get_history", return_value=[]),
-        patch("tgbot.handlers.save_history", return_value=None),
-        patch("tgbot.handlers.build_tools", return_value=[]),
-    ):
+    update, context = _update(text="Qual meu saldo?"), _context()
+    replies = [OutgoingMessage("555", "Saldo"), OutgoingMessage("555", "ALERTA")]
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=replies)) as process:
         await handle_message(update, context)
 
-    reply = update.message.reply_text.call_args[0][0]
-    assert "tool_use_failed" not in reply
-    assert "pode tentar novamente" in reply.lower()
+    msg = process.call_args.args[0]
+    assert msg == IncomingMessage(channel="telegram", external_user_id="555", display_name="Ana", chat_id="555", text="Qual meu saldo?", message_id="7")
+    kwargs = process.call_args.kwargs
+    assert kwargs["api_base_url"] == "http://internal" and kwargs["transport"] == "transport"
+    assert kwargs["invite_link"]("abc").endswith("?start=join_abc")
+    sent = [c.kwargs for c in context.bot.send_message.call_args_list]
+    assert sent == [{"chat_id": 555, "text": "Saldo"}, {"chat_id": 555, "text": "ALERTA"}]
 
 
 @pytest.mark.asyncio
-async def test_handle_message_calls_agent():
-    from tgbot.handlers import handle_message
+async def test_start_passes_code():
+    from tgbot.handlers import handle_start
 
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.message.text = "Qual meu saldo este mes?"
-    update.message.reply_text = AsyncMock()
-    update.message.chat.send_action = AsyncMock()
+    update, context = _update(text="/start ABC12345"), _context(args=["ABC12345"])
+    with patch("tgbot.handlers.process_start", return_value=[OutgoingMessage("555", "ok")]) as start:
+        await handle_start(update, context)
 
-    context = MagicMock()
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    mock_agent = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = "Resumo financeiro de junho..."
-    mock_agent.arun = AsyncMock(return_value=mock_response)
-
-    mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
-        "id": "user-uuid", "telegram_id": 123456789
-    }
-
-    with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
-        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
-        patch("tgbot.handlers.create_agent", return_value=mock_agent),
-        patch("tgbot.handlers.get_history", return_value=[]),
-        patch("tgbot.handlers.save_history", return_value=None),
-        patch("tgbot.handlers.build_tools", return_value=[]),
-    ):
-        await handle_message(update, context)
-
-    update.message.reply_text.assert_called_once()
+    assert start.call_args.args[1] == "ABC12345"
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text="ok")
 
 
 @pytest.mark.asyncio
-async def test_handle_message_resolves_leaked_tool_call():
+async def test_help_sends_help_text():
+    from core.conversation import HELP_TEXT
+    from tgbot.handlers import handle_help
+
+    update, context = _update(text="/ajuda"), _context()
+    await handle_help(update, context)
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text=HELP_TEXT)
+
+
+@pytest.mark.asyncio
+async def test_invite_command_uses_telegram_deep_link():
+    from tgbot.handlers import handle_invite
+
+    update, context = _update(text="/convidar"), _context()
+    context.bot.username = "finncyBot"
+    with patch("tgbot.handlers.invite_command", return_value=[OutgoingMessage("555", "link")]) as cmd:
+        await handle_invite(update, context)
+
+    link = cmd.call_args.args[1]
+    assert link("abc") == "https://t.me/finncyBot?start=join_abc"
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text="link")
+
+
+@pytest.mark.asyncio
+async def test_group_message_without_mention_is_not_addressed():
     from tgbot.handlers import handle_message
 
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.message.text = "sim, confirmo"
-    update.message.reply_text = AsyncMock()
-    update.message.chat.send_action = AsyncMock()
-
-    context = MagicMock()
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    leaked_text = (
-        '<function=registrar_transacao>{"type": "income", "amount": 1180.00, '
-        '"category": "Outros", "date": "", "description": "crédito na conta"}</function>'
-    )
-    mock_agent = MagicMock()
-    mock_response = MagicMock()
-    mock_response.content = leaked_text
-    mock_agent.arun = AsyncMock(return_value=mock_response)
-
-    mock_db = MagicMock()
-    mock_db.table.return_value.select.return_value.eq.return_value.single.return_value.execute.return_value.data = {
-        "id": "user-uuid", "telegram_id": 123456789
-    }
-
-    fake_tool = AsyncMock(return_value="Transação registrada com sucesso. Receita de R$ 1.180,00 em Outros na data 2026-07-16.")
-    fake_tool.__name__ = "registrar_transacao"
-
-    saved_history = {}
-
-    def _capture_save(db, user_id, history):
-        saved_history["history"] = history
-
-    with (
-        patch("tgbot.handlers.get_supabase", return_value=mock_db),
-        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
-        patch("tgbot.handlers.create_agent", return_value=mock_agent),
-        patch("tgbot.handlers.get_history", return_value=[]),
-        patch("tgbot.handlers.save_history", side_effect=_capture_save),
-        patch("tgbot.handlers.build_tools", return_value=[fake_tool]),
-    ):
+    update, context = _update(text="alguém viu meu guarda-chuva?", chat_id=-100, chat_type="group"), _context()
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process:
         await handle_message(update, context)
 
-    fake_tool.assert_called_once()
-    reply_sent = update.message.reply_text.call_args[0][0]
-    assert "<function=" not in reply_sent
-    assert "R$ 1.180,00" in reply_sent
-    assert "<function=" not in saved_history["history"][-1]["content"]
+    process.assert_not_called()
+    update.effective_chat.send_action.assert_not_called()
 
 
-def _voice_update(file_size: int = 1000):
-    update = MagicMock()
-    update.effective_user.id = 123456789
-    update.effective_user.first_name = "Lucas"
-    update.message.text = None
+@pytest.mark.asyncio
+async def test_group_mention_is_addressed_and_stripped():
+    from tgbot.handlers import handle_message
+
+    update, context = _update(text="@FinncyBot gastei 50", chat_id=-100, chat_type="supergroup"), _context()
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process:
+        await handle_message(update, context)
+
+    msg = process.call_args.args[0]
+    assert (msg.chat_type, msg.addressed, msg.text, msg.message_id) == ("group", True, "gastei 50", "7")
+
+
+@pytest.mark.asyncio
+async def test_group_reply_to_bot_is_addressed():
+    from tgbot.handlers import handle_message
+
+    update, context = _update(text="sim", chat_id=-100, chat_type="group", reply_to_bot=True), _context()
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process:
+        await handle_message(update, context)
+
+    assert process.call_args.args[0].addressed is True
+
+
+@pytest.mark.asyncio
+async def test_f_command_sends_text_after_command():
+    from tgbot.handlers import handle_f
+
+    update, context = _update(text="/f@finncyBot gastei 50", chat_id=-100, chat_type="group"), _context(args=["gastei", "50"])
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process:
+        await handle_f(update, context)
+
+    msg = process.call_args.args[0]
+    assert (msg.text, msg.addressed) == ("gastei 50", True)
+
+
+@pytest.mark.asyncio
+async def test_reply_and_buttons_are_rendered():
+    from core.messages import Button
+    from telegram import InlineKeyboardMarkup
+    from tgbot.handlers import handle_message
+
+    update, context = _update(text="@finncyBot oi", chat_id=-100, chat_type="group"), _context()
+    out = [OutgoingMessage("-100", "Aprovar?", reply_to="7", buttons=(Button("Aprovar Bia", "approve:bia"),))]
+    with patch("tgbot.handlers.process_message", AsyncMock(return_value=out)):
+        await handle_message(update, context)
+
+    kwargs = context.bot.send_message.call_args.kwargs
+    assert kwargs["chat_id"] == -100
+    assert kwargs["reply_parameters"].message_id == 7
+    markup = kwargs["reply_markup"]
+    assert isinstance(markup, InlineKeyboardMarkup)
+    assert markup.inline_keyboard[0][0].callback_data == "approve:bia"
+
+
+@pytest.mark.asyncio
+async def test_button_click_goes_to_core():
+    from tgbot.handlers import handle_button
+
+    update, context = MagicMock(), _context()
+    query = update.callback_query
+    query.answer = AsyncMock()
+    query.data = "approve:bia"
+    query.from_user.id = 1
+    query.from_user.first_name = "Ana"
+    query.message.chat.id = -100
+    query.message.chat.type = "group"
+    query.message.message_id = 50
+    with patch("tgbot.handlers.process_button", return_value=[OutgoingMessage("-100", "Bia agora faz parte")]) as button:
+        await handle_button(update, context)
+
+    query.answer.assert_awaited_once()
+    msg = button.call_args.args[0]
+    assert (msg.text, msg.external_user_id, msg.chat_id, msg.chat_type) == ("approve:bia", "1", "-100", "group")
+    context.bot.send_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bot_added_to_group_sends_welcome():
+    from core.group_chat import GROUP_WELCOME
+    from tgbot.handlers import handle_new_members
+
+    update, context = _update(text=None, chat_id=-100, chat_type="group"), _context()
+    bot_member = MagicMock(id=999)
+    update.message.new_chat_members = [MagicMock(id=1), bot_member]
+    await handle_new_members(update, context)
+    context.bot.send_message.assert_awaited_once_with(chat_id=-100, text=GROUP_WELCOME)
+
+
+@pytest.mark.asyncio
+async def test_migration_moves_binding():
+    from tgbot.handlers import handle_migration
+
+    update, context = _update(text=None, chat_id=-100, chat_type="group"), _context()
+    update.message.migrate_to_chat_id = -100999
+    with patch("tgbot.handlers.chat_migrated") as migrated:
+        await handle_migration(update, context)
+    migrated.assert_called_once_with("telegram", "-100", "-100999")
+
+
+def _voice_update(file_size=1000, **kwargs):
+    update = _update(text=None, **kwargs)
     update.message.audio = None
     update.message.voice.file_size = file_size
     tg_file = MagicMock()
     tg_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"fake-ogg"))
     update.message.voice.get_file = AsyncMock(return_value=tg_file)
-    update.message.reply_text = AsyncMock()
-    update.message.chat.send_action = AsyncMock()
     return update
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_transcribes_and_sends_text_to_agent():
+async def test_voice_is_transcribed_and_sent_as_text():
     from tgbot.handlers import handle_voice
 
-    update = _voice_update()
-    context = MagicMock()
-    context.bot_data = {"api_base_url": "http://localhost:8000"}
-
-    mock_agent = MagicMock()
-    mock_agent.arun = AsyncMock(return_value=MagicMock(content="Confirmo o registro..."))
-
+    update, context = _voice_update(), _context()
     with (
-        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="Gastei 50 reais no mercado")) as mock_transcribe,
-        patch("tgbot.handlers.get_supabase", return_value=MagicMock()),
-        patch("tgbot.handlers._get_or_create_user", return_value=({"id": "user-uuid", "telegram_id": 123456789}, False)),
-        patch("tgbot.handlers.create_agent", return_value=mock_agent),
-        patch("tgbot.handlers.get_history", return_value=[]),
-        patch("tgbot.handlers.save_history", return_value=None),
-        patch("tgbot.handlers.build_tools", return_value=[]),
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="gastei 50 no mercado")) as transcribe,
+        patch("tgbot.handlers.process_message", AsyncMock(return_value=[OutgoingMessage("555", "Confirma?")])) as process,
     ):
         await handle_voice(update, context)
 
-    assert mock_transcribe.call_args.args[0] == b"fake-ogg"
-    assert "Gastei 50 reais no mercado" in mock_agent.arun.call_args.args[0]
-    assert update.message.reply_text.call_args[0][0] == "Confirmo o registro..."
+    assert transcribe.call_args.args[0] == b"fake-ogg"
+    msg = process.call_args.args[0]
+    assert (msg.text, msg.chat_type, msg.addressed) == ("gastei 50 no mercado", "private", True)
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text="Confirma?")
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_with_empty_transcription_asks_to_repeat():
+async def test_voice_empty_transcription_asks_to_repeat():
     from tgbot.handlers import handle_voice
 
-    update = _voice_update()
-    context = MagicMock()
-
+    update, context = _voice_update(), _context()
     with (
         patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="")),
-        patch("tgbot.handlers.create_agent") as mock_create_agent,
+        patch("tgbot.handlers.process_message", AsyncMock()) as process,
     ):
         await handle_voice(update, context)
 
-    mock_create_agent.assert_not_called()
-    assert "não consegui entender" in update.message.reply_text.call_args[0][0].lower()
+    process.assert_not_called()
+    assert "não consegui entender" in context.bot.send_message.call_args.kwargs["text"].lower()
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_rejects_files_over_limit():
+async def test_voice_over_limit_is_rejected_without_download():
     from tgbot.handlers import handle_voice
 
-    update = _voice_update(file_size=25 * 1024 * 1024)
-    context = MagicMock()
-
-    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as mock_transcribe:
+    update, context = _voice_update(file_size=25 * 1024 * 1024), _context()
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as transcribe:
         await handle_voice(update, context)
 
-    mock_transcribe.assert_not_called()
-    assert "muito longo" in update.message.reply_text.call_args[0][0].lower()
+    transcribe.assert_not_called()
+    update.message.voice.get_file.assert_not_called()
+    assert "muito longo" in context.bot.send_message.call_args.kwargs["text"].lower()
 
 
 @pytest.mark.asyncio
-async def test_handle_voice_transcription_failure_shows_retry():
+async def test_voice_transcription_failure_asks_to_retry():
     from tgbot.handlers import handle_voice
 
-    update = _voice_update()
-    context = MagicMock()
-
-    with patch("tgbot.handlers.transcribe_audio", AsyncMock(side_effect=RuntimeError("groq down"))):
+    update, context = _voice_update(), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(side_effect=RuntimeError("groq down"))),
+        patch("tgbot.handlers.process_message", AsyncMock()) as process,
+    ):
         await handle_voice(update, context)
 
-    assert "tente novamente" in update.message.reply_text.call_args[0][0].lower()
+    process.assert_not_called()
+    assert "tente novamente" in context.bot.send_message.call_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_group_voice_not_replying_to_bot_is_ignored_without_transcribing():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(chat_id=-100, chat_type="group"), _context()
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as transcribe:
+        await handle_voice(update, context)
+
+    transcribe.assert_not_called()
+    context.bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_group_voice_replying_to_bot_is_processed():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(chat_id=-100, chat_type="group", reply_to_bot=True), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="sim")),
+        patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process,
+    ):
+        await handle_voice(update, context)
+
+    msg = process.call_args.args[0]
+    assert (msg.chat_type, msg.addressed, msg.text) == ("group", True, "sim")

@@ -1,215 +1,176 @@
 # -*- coding: utf-8 -*-
-import httpx
-import jwt
+"""Adaptador Telegram: converte Update em IncomingMessage, chama o nucleo e
+envia as respostas. Sem regra de negocio aqui."""
 import logging
-from datetime import datetime, timezone, timedelta
-from telegram import Update
+import re
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
+from app.config import settings
+from core.conversation import help_message, invite_command, process_message, process_start
+from core.group_chat import bind_command, chat_migrated, group_welcome, process_button, unbind_command
+from core.messages import IncomingMessage, OutgoingMessage
+from core.transcription import transcribe_audio
+
 logger = logging.getLogger("bot")
 
-# Limite de download de arquivos da Bot API do Telegram
+CHANNEL = "telegram"
+# Limite de download de arquivos da Bot API.
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
-from agent.bot import create_agent
-from agent.history import get_history, save_history
-from agent.tools import build_tools, is_raw_provider_error, resolve_leaked_tool_call
-from agent.transcription import transcribe_audio
-from app.config import settings
-from app.database import get_supabase
+
+def _is_group(update: Update) -> bool:
+    return update.effective_chat.type != "private"
 
 
-def _generate_user_token(user_id: str) -> str:
-    payload = {
-        "sub": user_id,
-        "aud": "authenticated",
-        "role": "authenticated",
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
-    }
-    return jwt.encode(payload, settings.supabase_jwt_secret, algorithm="HS256")
+def _replied_to_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    reply = update.message.reply_to_message
+    return reply is not None and reply.from_user.id == context.bot.id
 
 
-async def _get_or_create_user(db, telegram_id: int, first_name: str) -> tuple[dict | None, bool]:
-    result = (
-        db.table("users")
-        .select("*")
-        .eq("telegram_id", telegram_id)
-        .maybe_single()
-        .execute()
+def _incoming(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str | None = None, addressed: bool | None = None) -> IncomingMessage:
+    message = update.message
+    raw = message.text if text is None else text
+    raw = raw or ""
+    group = _is_group(update)
+    if group and addressed is None:
+        mention = f"@{context.bot.username}"
+        replied = _replied_to_bot(update, context)
+        mentioned = mention.lower() in raw.lower()
+        addressed = replied or mentioned
+        raw = re.sub(re.escape(mention), "", raw, flags=re.IGNORECASE).strip()
+    return IncomingMessage(
+        channel=CHANNEL,
+        external_user_id=str(update.effective_user.id),
+        display_name=update.effective_user.first_name or "",
+        chat_id=str(update.effective_chat.id),
+        text=raw,
+        chat_type="group" if group else "private",
+        addressed=True if addressed is None else addressed,
+        message_id=str(message.message_id),
     )
-    if result and result.data:
-        return result.data, False
-    logger.info("Novo usuário Telegram %s (%s) — criando registro", telegram_id, first_name)
-    insert_result = (
-        db.table("users")
-        .insert({"telegram_id": telegram_id, "name": first_name})
-        .execute()
-    )
-    if not insert_result.data:
-        return None, False
-    return insert_result.data[0], True
 
 
-async def _link_telegram_account(telegram_id: int, code: str, api_base_url: str) -> str:
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{api_base_url}/auth/telegram-link",
-            json={"code": code, "telegram_id": telegram_id},
-        )
-    if response.status_code == 200:
-        return (
-            "Telegram vinculado à sua conta com sucesso.\n\n"
-            "Suas transações e limites agora são os mesmos do painel web."
-        )
-    if response.status_code == 404:
-        return "Não foi possível vincular sua conta: código inválido ou expirado."
-
-    logger.warning(
-        "Falha inesperada ao vincular telegram_id=%s: status=%s body=%s",
-        telegram_id, response.status_code, response.text[:300],
-    )
-    return "Não foi possível vincular sua conta agora. Tente novamente em instantes."
+async def _send(context: ContextTypes.DEFAULT_TYPE, outgoing: list[OutgoingMessage]) -> None:
+    for out in outgoing:
+        kwargs = {"chat_id": int(out.chat_id), "text": out.text}
+        if out.reply_to:
+            # allow_sending_without_reply: se a mensagem original sumiu, envia mesmo assim.
+            kwargs["reply_parameters"] = ReplyParameters(message_id=int(out.reply_to), allow_sending_without_reply=True)
+        if out.buttons:
+            kwargs["reply_markup"] = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(b.label, callback_data=b.action) for b in out.buttons]]
+            )
+        await context.bot.send_message(**kwargs)
 
 
-async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_id = update.effective_user.id
-    first_name = update.effective_user.first_name or "usuário"
+def _invite_link(context: ContextTypes.DEFAULT_TYPE):
+    username = context.bot.username
+    return lambda token: f"https://t.me/{username}?start=join_{token}"
 
-    if context.args:
-        api_base_url = context.bot_data.get("api_base_url", "http://localhost:8000")
-        msg = await _link_telegram_account(telegram_id, context.args[0], api_base_url)
-        await update.message.reply_text(msg)
+
+async def _converse(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: IncomingMessage) -> None:
+    if msg.chat_type == "group" and not msg.addressed:
+        # Conversa da familia que nao e com o bot. O nucleo tambem ignora;
+        # aqui evita ate o "digitando...".
         return
-
-    db = get_supabase()
-
-    user, is_new = await _get_or_create_user(db, telegram_id, first_name)
-
-    if user and is_new:
-        msg = (
-            f"Olá, {first_name}. Bem-vindo ao Assistente Financeiro.\n\n"
-            "Para começar, informe suas transações em linguagem natural.\n"
-            "Exemplo: 'Gastei R$ 50,00 no mercado hoje'\n\n"
-            "Use /ajuda para ver todos os comandos disponíveis."
-        )
-    elif user and not is_new:
-        msg = (
-            f"Bem-vindo de volta, {first_name}.\n\n"
-            "Estou pronto para auxiliá-lo no controle financeiro.\n"
-            "Use /ajuda para ver os comandos disponíveis."
-        )
-    else:
-        msg = "Não foi possível registrar seu acesso. Por favor, tente novamente."
-
-    await update.message.reply_text(msg)
-
-
-async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    msg = (
-        "Comandos disponíveis:\n\n"
-        "/start — Iniciar ou reiniciar o assistente\n"
-        "/ajuda — Exibir esta mensagem\n\n"
-        "O que posso fazer por você (por texto ou áudio):\n"
-        "- Registrar receitas e despesas ('Gastei R$ 150 no mercado')\n"
-        "- Consultar saldo do mês ('Qual meu saldo?')\n"
-        "- Ver extrato ('Mostre meus gastos de junho')\n"
-        "- Resumo por categoria ('Quanto gastei com alimentação?')\n"
-        "- Definir limites ('Limite de R$ 500 para Alimentação')\n"
-        "- Ver limites ('Quais são meus limites?')"
+    await update.effective_chat.send_action(ChatAction.TYPING)
+    outgoing = await process_message(
+        msg,
+        api_base_url=context.bot_data.get("api_base_url", settings.api_base_url),
+        transport=context.bot_data.get("api_transport"),
+        invite_link=_invite_link(context),
     )
-    await update.message.reply_text(msg)
+    await _send(context, outgoing)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _process_user_message(update, context, update.message.text)
+    await _converse(update, context, _incoming(update, context))
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    telegram_id = update.effective_user.id
-    media = update.message.voice or update.message.audio
-
-    if media.file_size and media.file_size > MAX_AUDIO_BYTES:
-        await update.message.reply_text(
-            "O áudio é muito longo para ser processado. Envie uma gravação mais curta."
-        )
+    """Audio vira texto (Whisper) e segue o mesmo fluxo de uma mensagem digitada.
+    Em grupo nao da para mencionar o bot por voz: so responde a quem respondeu ao bot."""
+    group = _is_group(update)
+    if group and not _replied_to_bot(update, context):
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
+    message = update.message
+    reply_to = str(message.message_id) if group else None
+
+    async def reply(text: str) -> None:
+        await _send(context, [OutgoingMessage(str(update.effective_chat.id), text, reply_to=reply_to)])
+
+    media = message.voice or message.audio
+    if media.file_size and media.file_size > MAX_AUDIO_BYTES:
+        await reply("O áudio é muito longo para ser processado. Envie uma gravação mais curta.")
+        return
+
+    await update.effective_chat.send_action(ChatAction.TYPING)
     try:
         tg_file = await media.get_file()
-        audio = bytes(await tg_file.download_as_bytearray())
-        text = await transcribe_audio(audio)
+        text = await transcribe_audio(bytes(await tg_file.download_as_bytearray()))
     except Exception:
-        logger.exception("[%s] Falha ao transcrever áudio", telegram_id)
-        await update.message.reply_text(
-            "Não foi possível processar o áudio agora. Tente novamente ou envie por texto."
-        )
+        logger.exception("Falha ao transcrever audio do chat %s", update.effective_chat.id)
+        await reply("Não foi possível processar o áudio agora. Tente novamente ou envie por texto.")
         return
 
     if not text:
-        await update.message.reply_text(
-            "Não consegui entender o áudio. Pode repetir ou enviar por texto?"
-        )
+        await reply("Não consegui entender o áudio. Pode repetir ou enviar por texto?")
         return
 
-    logger.info("[%s] Áudio transcrito: %s", telegram_id, text[:80])
-    await _process_user_message(update, context, text)
+    await _converse(update, context, _incoming(update, context, text=text, addressed=True))
 
 
-async def _process_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE, user_message: str) -> None:
-    telegram_id = update.effective_user.id
-    db = get_supabase()
+async def handle_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _converse(update, context, _incoming(update, context, text=" ".join(context.args or []), addressed=True))
 
-    user, _ = await _get_or_create_user(db, telegram_id, update.effective_user.first_name or "")
-    if not user:
-        await update.message.reply_text(
-            "Usuário não encontrado. Por favor, use /start para se registrar."
-        )
-        return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
-    logger.info("[%s] Mensagem recebida: %s", telegram_id, user_message[:80])
+async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    code = context.args[0] if context.args else None
+    await _send(context, process_start(_incoming(update, context, addressed=True), code))
 
-    user_token = _generate_user_token(user["id"])
 
-    history = get_history(db, user["id"])
-    recent_history = history[-10:]
+async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(context, help_message(_incoming(update, context, addressed=True)))
 
-    tools = build_tools(
-        user_token=user_token,
-        api_base_url=context.bot_data.get("api_base_url", "http://localhost:8000"),
-        bot=context.bot,
-        telegram_id=telegram_id,
+
+async def handle_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(context, invite_command(_incoming(update, context, addressed=True), _invite_link(context)))
+
+
+async def handle_bind(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(context, bind_command(_incoming(update, context, addressed=True)))
+
+
+async def handle_unbind(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await _send(context, unbind_command(_incoming(update, context, addressed=True)))
+
+
+async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    chat = query.message.chat
+    msg = IncomingMessage(
+        channel=CHANNEL,
+        external_user_id=str(query.from_user.id),
+        display_name=query.from_user.first_name or "",
+        chat_id=str(chat.id),
+        text=query.data or "",
+        chat_type="group" if chat.type != "private" else "private",
+        message_id=str(query.message.message_id),
     )
-    agent = create_agent(tools)
+    await _send(context, process_button(msg))
 
-    history_context = ""
-    if recent_history:
-        history_context = "\n\n[Histórico recente da conversa:]\n"
-        for msg in recent_history:
-            role = "Usuário" if msg["role"] == "user" else "Assistente"
-            history_context += f"{role}: {msg['content']}\n"
-        history_context += "[Fim do histórico]\n\n"
 
-    full_message = f"{history_context}Usuário: {user_message}"
-    logger.info("[%s] Chamando agente Groq...", telegram_id)
-    response = await agent.arun(full_message)
-    bot_reply = response.content if hasattr(response, "content") else str(response)
+async def handle_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if any(member.id == context.bot.id for member in update.message.new_chat_members):
+        await _send(context, group_welcome(_incoming(update, context, addressed=True)))
 
-    leaked_result = await resolve_leaked_tool_call(bot_reply, tools)
-    if leaked_result is not None:
-        logger.warning("[%s] Tool call vazada como texto pelo modelo -- executando manualmente", telegram_id)
-        bot_reply = leaked_result
-    elif is_raw_provider_error(bot_reply):
-        logger.warning("[%s] Erro bruto do provedor vazou na resposta -- usando fallback", telegram_id)
-        bot_reply = "Desculpe, tive um problema para processar sua mensagem. Pode tentar novamente?"
 
-    logger.info("[%s] Resposta: %s", telegram_id, bot_reply[:120])
-
-    history.append({"role": "user", "content": user_message})
-    history.append({"role": "assistant", "content": bot_reply})
-    save_history(db, user["id"], history)
-
-    await update.message.reply_text(bot_reply)
+async def handle_migration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    new_chat_id = update.message.migrate_to_chat_id
+    if new_chat_id:
+        chat_migrated(CHANNEL, str(update.effective_chat.id), str(new_chat_id))

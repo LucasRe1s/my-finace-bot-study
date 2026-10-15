@@ -4,6 +4,9 @@ import inspect
 import json
 import re
 from datetime import date as DateType
+from typing import Callable
+
+from core.alerts import limit_alert_message
 
 _LEAKED_FUNCTION_CALL = re.compile(r"<function=(\w+)>(\{.*?\})</function>", re.DOTALL)
 
@@ -54,10 +57,16 @@ def is_raw_provider_error(reply: str) -> bool:
 def build_tools(
     user_token: str,
     api_base_url: str = "http://localhost:8000",
-    bot=None,
-    telegram_id=None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    alert_sink: list[str] | None = None,
+    invite_link: Callable[[str], str] | None = None,
 ) -> list:
     headers = {"Authorization": f"Bearer {user_token}"}
+
+    def _client() -> httpx.AsyncClient:
+        # Com transport (bot dentro da API), as chamadas vao direto para o app
+        # FastAPI em processo, sem rede; sem ele, vao por HTTP para api_base_url.
+        return httpx.AsyncClient(base_url=api_base_url, transport=transport, timeout=30)
 
     async def registrar_transacao(
         amount: float,
@@ -82,25 +91,20 @@ def build_tools(
             "description": description,
             "date": date or str(DateType.today()),
         }
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/transactions/",
+                "/transactions/",
                 json=payload,
                 headers=headers,
             )
-            if response.status_code == 201 and bot and telegram_id:
-                limits_response = await client.get(f"{api_base_url}/limits/", headers=headers)
+            if response.status_code == 201 and alert_sink is not None:
+                limits_response = await client.get("/limits/", headers=headers)
                 if limits_response.status_code == 200:
                     for lim in limits_response.json():
                         if lim["category"] == category:
-                            from tgbot.alerts import check_and_send_alerts
-                            await check_and_send_alerts(
-                                bot=bot,
-                                telegram_id=telegram_id,
-                                category=category,
-                                spent=lim["spent"],
-                                monthly_limit=lim["monthly_limit"],
-                            )
+                            alert = limit_alert_message(category, lim["spent"], lim["monthly_limit"])
+                            if alert:
+                                alert_sink.append(alert)
         if response.status_code == 201:
             tx = response.json()
             tipo = "Receita" if type == "income" else "Despesa"
@@ -113,9 +117,9 @@ def build_tools(
         Args:
             name: Nome do grupo (padrão: "Minha Família")
         """
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/groups/",
+                "/groups/",
                 json={"name": name},
                 headers=headers,
             )
@@ -143,9 +147,9 @@ def build_tools(
         if type:
             params["type"] = type
 
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.get(
-                f"{api_base_url}/transactions/",
+                "/transactions/",
                 params=params,
                 headers=headers,
             )
@@ -159,10 +163,36 @@ def build_tools(
         lines = [f"Extrato -- {len(transactions)} transação(ões):"]
         for t in transactions[:20]:
             tipo = "+" if t["type"] == "income" else "-"
-            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}")
+            autor = f" | {t['user_name']}" if t.get("user_name") else ""
+            lines.append(f"  {tipo} {_fmt_brl(t['amount'])} | {t['category']} | {t['description']} | {t['date']}{autor}")
         if len(transactions) > 20:
             lines.append(f"  ... e mais {len(transactions) - 20} transação(ões).")
         return "\n".join(lines)
+
+    async def desfazer_ultima_transacao() -> str:
+        """Desfaz (apaga) a última transação registrada pelo próprio usuário nos últimos 10 minutos.
+        Use somente depois que o usuário confirmar."""
+        async with _client() as client:
+            response = await client.post("/transactions/undo-last", headers=headers)
+        if response.status_code == 200:
+            tx = response.json()
+            tipo = "Receita" if tx["type"] == "income" else "Despesa"
+            descricao = tx.get("description") or "sem descrição"
+            return f"Transação desfeita: {tipo} de {_fmt_brl(tx['amount'])} em {tx['category']} ({descricao})."
+        if response.status_code == 404:
+            return "Não há transação sua registrada nos últimos 10 minutos para desfazer."
+        return f"Erro ao desfazer transação: {response.text}"
+
+    async def gerar_convite() -> str:
+        """Gera um link de convite (uso único, válido por 7 dias) para um familiar entrar no grupo financeiro."""
+        if invite_link is None:
+            return "Este canal ainda não gera links de convite. Gere o convite pelo painel web."
+        async with _client() as client:
+            response = await client.post("/groups/invite", json={}, headers=headers)
+        if response.status_code == 201:
+            link = invite_link(response.json()["token"])
+            return f"Convite criado. Envie este link ao familiar (uso único, válido por 7 dias):\n{link}"
+        return f"Erro ao gerar convite: {response.text}"
 
     async def consultar_resumo(month: str = None) -> str:
         """Consulta o resumo financeiro do mês com saldo e gastos por categoria.
@@ -174,9 +204,9 @@ def build_tools(
         if month:
             params["month"] = month
 
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.get(
-                f"{api_base_url}/summary/",
+                "/summary/",
                 params=params,
                 headers=headers,
             )
@@ -198,8 +228,8 @@ def build_tools(
 
     async def consultar_limites() -> str:
         """Consulta os limites mensais configurados por categoria e o percentual utilizado."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{api_base_url}/limits/", headers=headers)
+        async with _client() as client:
+            response = await client.get("/limits/", headers=headers)
         if response.status_code != 200:
             return f"Erro ao consultar limites: {response.text}"
 
@@ -223,9 +253,9 @@ def build_tools(
             category: Categoria (Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Vestuário, Outros)
             monthly_limit: Valor limite mensal em reais
         """
-        async with httpx.AsyncClient() as client:
+        async with _client() as client:
             response = await client.post(
-                f"{api_base_url}/limits/",
+                "/limits/",
                 json={"category": category, "monthly_limit": monthly_limit},
                 headers=headers,
             )
@@ -236,7 +266,9 @@ def build_tools(
     return [
         registrar_transacao,
         criar_grupo,
+        gerar_convite,
         consultar_extrato,
+        desfazer_ultima_transacao,
         consultar_resumo,
         consultar_limites,
         definir_limite,

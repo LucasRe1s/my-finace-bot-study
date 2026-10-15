@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
+
+  useEffect(() => {
+    // O callback de autenticacao redireciona para ca com ?erro=link quando o link falha.
+    if (new URLSearchParams(window.location.search).get("erro") === "link") {
+      setError("Link de acesso inválido ou expirado. Entre com email e senha.");
+    }
+  }, []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();

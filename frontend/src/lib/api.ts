@@ -8,6 +8,8 @@ export type Transaction = {
   description: string;
   date: string;
   created_at: string;
+  user_id: string | null;
+  user_name: string | null;
 };
 
 export type CategorySummary = { category: string; total: number };
@@ -31,6 +33,7 @@ export type Limit = {
 export type GroupMember = {
   user_id: string;
   role: "owner" | "member";
+  name: string;
 };
 
 export function formatBRL(value: number): string {
@@ -54,10 +57,31 @@ async function apiFetch<T>(
     },
   });
   if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`API error ${res.status}: ${error}`);
+    throw new ApiError(res.status, await readErrorMessage(res));
   }
   return res.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+// O FastAPI devolve {"detail": "..."} nos HTTPException e {"detail": [{msg}]}
+// nos erros de validacao (422). Mostra so o texto, nunca o JSON cru.
+async function readErrorMessage(res: Response): Promise<string> {
+  const fallback = `Erro inesperado (${res.status}). Tente novamente.`;
+  const body = await res.text();
+  try {
+    const { detail } = JSON.parse(body);
+    if (typeof detail === "string" && detail) return detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return String(detail[0].msg);
+  } catch {
+    // corpo nao e JSON (ex.: 502 do proxy)
+  }
+  return fallback;
 }
 
 export async function getSummary(
@@ -127,7 +151,7 @@ export async function createTelegramLinkCode(
 export async function sendInvite(
   token: string,
   email: string
-): Promise<{ id: string; email: string; token: string }> {
+): Promise<{ id: string; email: string | null; token: string }> {
   return apiFetch("/groups/invite", token, {
     method: "POST",
     body: JSON.stringify({ email }),
@@ -135,7 +159,8 @@ export async function sendInvite(
 }
 
 export type InvitePreview = {
-  email: string;
+  // null quando o convite foi gerado pelo bot (sem email)
+  email: string | null;
   group_name: string;
 };
 
