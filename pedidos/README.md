@@ -37,7 +37,7 @@ O webhook precisa de URL pública. Para testar os botões localmente, exponha a 
 
 ## Deploy (Vercel)
 
-1. Importe o repositório na Vercel com **Root Directory = `pedidos`**.
+1. Importe o repositório na Vercel como um projeto novo, com **Root Directory = `pedidos`**. O dashboard do assessor é outro projeto Vercel apontando para o mesmo repositório com Root Directory = `frontend`. O `vercel.json` de cada pasta faz a Vercel pular o build quando o commit não mexe naquela pasta.
 2. Cadastre as variáveis de ambiente.
 3. Após o deploy, registre o webhook:
 
