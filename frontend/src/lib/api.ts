@@ -1,7 +1,6 @@
-// Vercel Services: no servidor a API e alcancada pelo binding interno
-// FINNCY_API_URL (injetado em runtime, sem passar pela internet); no navegador
-// pelo rewrite publico /api do mesmo dominio. Em dev local os dois caem em
-// NEXT_PUBLIC_API_URL (ex.: http://localhost:8000).
+// URL do backend em NEXT_PUBLIC_API_URL (projeto Vercel separado). No servidor,
+// FINNCY_API_URL tem prioridade se existir (binding interno caso o app volte a
+// rodar em Vercel Services); sem nenhuma das duas, cai em /api no mesmo dominio.
 function apiBase(): string {
   const base =
     typeof window === "undefined"

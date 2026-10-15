@@ -220,41 +220,38 @@ em que roda, o que derrubaria o bot de produção.
 
 ## Deploy
 
-Dois projetos na Vercel apontando para o mesmo repositório:
+Três projetos na Vercel apontando para o mesmo repositório (Root Directory de cada um):
 
-| Projeto | Root Directory | Conteúdo |
+| Projeto | Root Directory | Domínio de produção |
 |---|---|---|
-| Assessor (Finncy) | raiz do repositório | `vercel.json` com Vercel Services: `finncy-api` (backend) + `frontend` (dashboard) |
-| Pedidos | `pedidos` | módulo independente (ver `pedidos/README.md`) |
+| backend (API + bot Finncy) | `backend` | `backend-phi-three-37.vercel.app` |
+| dashboard | `frontend` | `dashboard-chi-swart-23.vercel.app` |
+| pedidos (módulo independente) | `pedidos` | `pedidos-zeta-sandy.vercel.app` |
 
-### Assessor (Vercel Services)
+Não deixe o Root Directory vazio: o build tentaria montar mais de um app.
 
-Um domínio só. O `vercel.json` da raiz define:
+### Backend (`backend/`)
 
-- `finncy-api` (`backend/`, FastAPI): público em `/api/*`. Recebe o caminho original (`/api/...`);
-  `backend/api/index.py` aceita com e sem o prefixo.
-- `frontend` (`frontend/`, Next.js): público em todo o resto. Páginas do servidor chamam a API pelo
-  binding interno `FINNCY_API_URL` (injetado pela Vercel); o navegador chama `/api` no mesmo domínio.
-
-A Vercel injeta `VERCEL=1`, que liga o modo serverless do backend: o webhook do Telegram/WhatsApp é
+A Vercel injeta `VERCEL=1`, que liga o modo serverless: o webhook do Telegram/WhatsApp é
 processado dentro da própria requisição e reentregas são descartadas pela tabela `processed_updates`.
 
 1. Aplicar as migrations (`backend/supabase/migrations/001` a `015`) no Supabase.
-2. Criar o projeto na Vercel com Root Directory = raiz do repositório. Variáveis (compartilhadas
-   pelos dois serviços): as do `backend/.env.example` com `TELEGRAM_MODE=webhook`, mais
-   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
-   **Não** definir `NEXT_PUBLIC_API_URL` nem `FINNCY_API_URL` (o navegador usa `/api` e o binding é
-   gerado pela Vercel). `CORS_ORIGINS` não é necessário (mesmo domínio).
+2. Variáveis: todas do `backend/.env.example`, com `TELEGRAM_MODE=webhook` (sem `PUBLIC_BASE_URL`)
+   e `CORS_ORIGINS` com o domínio do dashboard (sem barra no final).
 3. Após o deploy, registrar o webhook (substitui qualquer webhook/polling anterior do bot):
 
 ```bash
 cd backend
-python -m tgbot.set_webhook https://<dominio>/api
+python -m tgbot.set_webhook https://backend-phi-three-37.vercel.app
 ```
 
-4. WhatsApp (se usado): webhook da Meta em `https://<dominio>/api/whatsapp/webhook`.
+4. WhatsApp (se usado): webhook da Meta em `https://backend-phi-three-37.vercel.app/whatsapp/webhook`.
 
-Teste local de tudo junto: `npx vercel dev -L` na raiz (injeta o binding).
+### Dashboard (`frontend/`)
+
+Variáveis: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_API_URL` (URL do backend) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`. Variáveis
+`NEXT_PUBLIC_*` entram no build: depois de alterar, faça Redeploy.
 
 ### Render (alternativa)
 
