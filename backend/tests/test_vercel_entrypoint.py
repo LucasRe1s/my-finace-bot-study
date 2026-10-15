@@ -12,7 +12,7 @@ import sys
 sys.meta_path = [f for f in sys.meta_path if "editable" not in repr(f).lower()]
 sys.path = [p for p in sys.path if p != %r]
 import index
-print(index.app.title)
+print(index.fastapi_app.title)
 """ % str(BACKEND)
 
 
