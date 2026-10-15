@@ -13,6 +13,7 @@ from .handlers import (
     handle_new_members,
     handle_start,
     handle_unbind,
+    handle_voice,
 )
 
 from app.config import settings
@@ -47,6 +48,7 @@ def build_app(
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
     app.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, handle_migration))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
 
     return app
 

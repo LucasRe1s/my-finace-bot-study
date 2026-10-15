@@ -46,9 +46,11 @@ _HELP_FEATURES = [
 def help_text(channel: str) -> str:
     commands = _HELP_COMMANDS + (_TELEGRAM_GROUP_COMMANDS if channel == "telegram" else [])
     commands.append("/ajuda: exibir esta mensagem")
+    # Audio por enquanto so no Telegram (tgbot.handlers.handle_voice).
+    features = _HELP_FEATURES + (["- Tudo isso também por áudio"] if channel == "telegram" else [])
     return (
         "Comandos disponíveis:\n\n" + "\n".join(commands)
-        + "\n\nO que posso fazer por você:\n" + "\n".join(_HELP_FEATURES)
+        + "\n\nO que posso fazer por você:\n" + "\n".join(features)
     )
 
 

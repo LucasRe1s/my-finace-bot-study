@@ -194,3 +194,100 @@ async def test_migration_moves_binding():
     with patch("tgbot.handlers.chat_migrated") as migrated:
         await handle_migration(update, context)
     migrated.assert_called_once_with("telegram", "-100", "-100999")
+
+
+def _voice_update(file_size=1000, **kwargs):
+    update = _update(text=None, **kwargs)
+    update.message.audio = None
+    update.message.voice.file_size = file_size
+    tg_file = MagicMock()
+    tg_file.download_as_bytearray = AsyncMock(return_value=bytearray(b"fake-ogg"))
+    update.message.voice.get_file = AsyncMock(return_value=tg_file)
+    return update
+
+
+@pytest.mark.asyncio
+async def test_voice_is_transcribed_and_sent_as_text():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="gastei 50 no mercado")) as transcribe,
+        patch("tgbot.handlers.process_message", AsyncMock(return_value=[OutgoingMessage("555", "Confirma?")])) as process,
+    ):
+        await handle_voice(update, context)
+
+    assert transcribe.call_args.args[0] == b"fake-ogg"
+    msg = process.call_args.args[0]
+    assert (msg.text, msg.chat_type, msg.addressed) == ("gastei 50 no mercado", "private", True)
+    context.bot.send_message.assert_awaited_once_with(chat_id=555, text="Confirma?")
+
+
+@pytest.mark.asyncio
+async def test_voice_empty_transcription_asks_to_repeat():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="")),
+        patch("tgbot.handlers.process_message", AsyncMock()) as process,
+    ):
+        await handle_voice(update, context)
+
+    process.assert_not_called()
+    assert "não consegui entender" in context.bot.send_message.call_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_voice_over_limit_is_rejected_without_download():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(file_size=25 * 1024 * 1024), _context()
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as transcribe:
+        await handle_voice(update, context)
+
+    transcribe.assert_not_called()
+    update.message.voice.get_file.assert_not_called()
+    assert "muito longo" in context.bot.send_message.call_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_voice_transcription_failure_asks_to_retry():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(side_effect=RuntimeError("groq down"))),
+        patch("tgbot.handlers.process_message", AsyncMock()) as process,
+    ):
+        await handle_voice(update, context)
+
+    process.assert_not_called()
+    assert "tente novamente" in context.bot.send_message.call_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_group_voice_not_replying_to_bot_is_ignored_without_transcribing():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(chat_id=-100, chat_type="group"), _context()
+    with patch("tgbot.handlers.transcribe_audio", AsyncMock()) as transcribe:
+        await handle_voice(update, context)
+
+    transcribe.assert_not_called()
+    context.bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_group_voice_replying_to_bot_is_processed():
+    from tgbot.handlers import handle_voice
+
+    update, context = _voice_update(chat_id=-100, chat_type="group", reply_to_bot=True), _context()
+    with (
+        patch("tgbot.handlers.transcribe_audio", AsyncMock(return_value="sim")),
+        patch("tgbot.handlers.process_message", AsyncMock(return_value=[])) as process,
+    ):
+        await handle_voice(update, context)
+
+    msg = process.call_args.args[0]
+    assert (msg.chat_type, msg.addressed, msg.text) == ("group", True, "sim")

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Adaptador Telegram: converte Update em IncomingMessage, chama o nucleo e
 envia as respostas. Sem regra de negocio aqui."""
+import logging
 import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, Update
@@ -11,12 +12,22 @@ from app.config import settings
 from core.conversation import help_message, invite_command, process_message, process_start
 from core.group_chat import bind_command, chat_migrated, group_welcome, process_button, unbind_command
 from core.messages import IncomingMessage, OutgoingMessage
+from core.transcription import transcribe_audio
+
+logger = logging.getLogger("bot")
 
 CHANNEL = "telegram"
+# Limite de download de arquivos da Bot API.
+MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
 
 def _is_group(update: Update) -> bool:
     return update.effective_chat.type != "private"
+
+
+def _replied_to_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    reply = update.message.reply_to_message
+    return reply is not None and reply.from_user.id == context.bot.id
 
 
 def _incoming(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str | None = None, addressed: bool | None = None) -> IncomingMessage:
@@ -26,7 +37,7 @@ def _incoming(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str | No
     group = _is_group(update)
     if group and addressed is None:
         mention = f"@{context.bot.username}"
-        replied = message.reply_to_message is not None and message.reply_to_message.from_user.id == context.bot.id
+        replied = _replied_to_bot(update, context)
         mentioned = mention.lower() in raw.lower()
         addressed = replied or mentioned
         raw = re.sub(re.escape(mention), "", raw, flags=re.IGNORECASE).strip()
@@ -77,6 +88,40 @@ async def _converse(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: Inc
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _converse(update, context, _incoming(update, context))
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Audio vira texto (Whisper) e segue o mesmo fluxo de uma mensagem digitada.
+    Em grupo nao da para mencionar o bot por voz: so responde a quem respondeu ao bot."""
+    group = _is_group(update)
+    if group and not _replied_to_bot(update, context):
+        return
+
+    message = update.message
+    reply_to = str(message.message_id) if group else None
+
+    async def reply(text: str) -> None:
+        await _send(context, [OutgoingMessage(str(update.effective_chat.id), text, reply_to=reply_to)])
+
+    media = message.voice or message.audio
+    if media.file_size and media.file_size > MAX_AUDIO_BYTES:
+        await reply("O áudio é muito longo para ser processado. Envie uma gravação mais curta.")
+        return
+
+    await update.effective_chat.send_action(ChatAction.TYPING)
+    try:
+        tg_file = await media.get_file()
+        text = await transcribe_audio(bytes(await tg_file.download_as_bytearray()))
+    except Exception:
+        logger.exception("Falha ao transcrever audio do chat %s", update.effective_chat.id)
+        await reply("Não foi possível processar o áudio agora. Tente novamente ou envie por texto.")
+        return
+
+    if not text:
+        await reply("Não consegui entender o áudio. Pode repetir ou enviar por texto?")
+        return
+
+    await _converse(update, context, _incoming(update, context, text=text, addressed=True))
 
 
 async def handle_f(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
