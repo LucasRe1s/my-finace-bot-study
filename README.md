@@ -186,6 +186,21 @@ Limitações:
 
 ## Rodando localmente
 
+### Supabase local (opcional)
+
+Requer Docker. Sobe Postgres, Auth e API em containers e aplica todas as migrations de `backend/supabase/migrations`:
+
+```bash
+cd backend
+npx supabase start     # primeira vez baixa as imagens
+npx supabase status    # URL (http://127.0.0.1:54321), anon key, service_role key, JWT secret
+```
+
+Copie os valores para `backend/.env` (`SUPABASE_URL`, `SUPABASE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_JWT_SECRET`) e `frontend/.env.local`. Studio em http://127.0.0.1:54323.
+`npx supabase db reset` recria o banco do zero; `npx supabase stop` desliga.
+
+
 ```bash
 # API (TELEGRAM_MODE=off no .env)
 cd backend
