@@ -9,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from app.config import settings
+from core.dedupe import claim_update
 
 from .client import WhatsAppClient
 from .dispatch import handle_event
@@ -77,6 +78,13 @@ async def receive_webhook(request: Request, background: BackgroundTasks):
         raise HTTPException(status_code=400, detail="JSON inválido.")
 
     events = [e for e in parse_webhook(payload) if not _recent.seen(e.wamid)]
+    if settings.serverless:
+        # Sem background: a funcao congela apos responder. Memoria nao e
+        # compartilhada entre instancias, entao a deduplicacao vai para o banco.
+        events = [e for e in events if claim_update(f"whatsapp:{e.wamid}")]
+        if events:
+            await _process(events, httpx.ASGITransport(app=request.app))
+        return {"ok": True}
     if events:
         # Responde 200 na hora; o LLM roda depois, sem a Meta estourar timeout e reenviar.
         background.add_task(_process, events, httpx.ASGITransport(app=request.app))

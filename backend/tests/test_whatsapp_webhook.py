@@ -78,3 +78,26 @@ def test_recent_ids_evicts_oldest():
     recent.seen("b")
     recent.seen("c")
     assert not recent.seen("a")
+
+
+def test_serverless_processes_inline_and_dedupes_in_db(client, enabled, monkeypatch):
+    monkeypatch.setattr(settings, "serverless", True)
+    claimed = set()
+
+    def claim(key):
+        if key in claimed:
+            return False
+        claimed.add(key)
+        return True
+
+    with (
+        patch.object(webhook, "handle_event", AsyncMock()) as handle,
+        patch.object(webhook, "make_client"),
+        patch.object(webhook, "claim_update", side_effect=claim),
+    ):
+        assert _post(client, _body("wamid.9")).status_code == 200
+        monkeypatch.setattr(webhook, "_recent", RecentIds(100))  # nova instancia serverless, memoria vazia
+        assert _post(client, _body("wamid.9")).status_code == 200
+
+    assert claimed == {"whatsapp:wamid.9"}
+    assert handle.await_count == 1

@@ -8,6 +8,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from telegram import Update
 
 from app.config import settings
+from core.dedupe import claim_update
 from .runner import ALLOWED_UPDATES, build_app
 
 logger = logging.getLogger("bot")
@@ -26,6 +27,9 @@ async def telegram_webhook(request: Request):
     if not expected or not hmac.compare_digest(received, expected):
         raise HTTPException(status_code=403, detail="Segredo do webhook inválido.")
 
+    if settings.serverless:
+        return await _process_inline(request)
+
     ptb = getattr(request.app.state, "telegram_app", None)
     if ptb is None:
         raise HTTPException(status_code=503, detail="Bot não está ativo.")
@@ -37,9 +41,38 @@ async def telegram_webhook(request: Request):
     return {"ok": True}
 
 
+async def _process_inline(request: Request) -> dict:
+    """Serverless: processa o update antes de responder. Uma Application por
+    requisicao (o event loop nao e garantido entre invocacoes)."""
+    if settings.telegram_mode != "webhook":
+        raise HTTPException(status_code=503, detail="Bot não está ativo.")
+
+    payload = await request.json()
+    ptb = build_app(
+        api_base_url=INTERNAL_API_BASE_URL,
+        api_transport=httpx.ASGITransport(app=request.app),
+        webhook=True,
+    )
+    await ptb.initialize()
+    try:
+        update = Update.de_json(payload, ptb.bot)
+        if not claim_update(f"telegram:{update.update_id}"):
+            logger.info("Update %s repetido, ignorado", update.update_id)
+            return {"ok": True}
+        await ptb.process_update(update)
+    except Exception:
+        # 200 mesmo assim: senao o Telegram reenvia e repete o erro.
+        logger.exception("Falha ao processar update do Telegram")
+    finally:
+        await ptb.shutdown()
+    return {"ok": True}
+
+
 @asynccontextmanager
 async def telegram_lifespan(api: FastAPI):
-    if settings.telegram_mode != "webhook":
+    # Serverless: nada fica rodando; o webhook e registrado por
+    # `python -m tgbot.set_webhook <url>`.
+    if settings.telegram_mode != "webhook" or settings.serverless:
         api.state.telegram_app = None
         yield
         return

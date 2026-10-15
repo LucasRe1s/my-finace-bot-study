@@ -55,7 +55,7 @@ Design original em [`specs/2026-06-25-design.md`](specs/2026-06-25-design.md). R
 | Camada | Tecnologia |
 |---|---|
 | Bot | python-telegram-bot v22 (webhook dentro da API) |
-| Agente IA | Agno + Groq (llama-3.3-70b-versatile) |
+| Agente IA | Agno + Groq (`GROQ_MODEL`, padrão `openai/gpt-oss-120b`) |
 | Backend | Python 3.12, FastAPI, Uvicorn |
 | Banco | Supabase (PostgreSQL) |
 | Auth | Supabase Auth (JWT via JWKS, chaves ES256) + JWT próprio do bot (HS256) |
@@ -105,6 +105,7 @@ Crie um `.env` a partir de `.env.example`:
 | `SUPABASE_JWT_SECRET` | secret JWT legado do Supabase; o bot assina os tokens dos usuários com ele |
 | `TELEGRAM_BOT_TOKEN` | token do @BotFather |
 | `GROQ_API_KEY` | chave do Groq |
+| `GROQ_MODEL` | modelo do agente (padrão `openai/gpt-oss-120b`; o Groq descontinua modelos com frequência) |
 | `TELEGRAM_MODE` | `off` (só API), `webhook` (produção) ou `polling` (dev) |
 | `PUBLIC_BASE_URL` | URL pública da API (webhook). No Render, usa `RENDER_EXTERNAL_URL` se vazio |
 | `TELEGRAM_WEBHOOK_SECRET` | segredo do webhook. Gerar com `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
@@ -204,24 +205,44 @@ em que roda, o que derrubaria o bot de produção.
 
 ## Deploy
 
-Backend e bot são **um único web service** no Render (`render.yaml` na raiz). Frontend na Vercel.
+Tudo na Vercel, em projetos separados apontando para o mesmo repositório. O `vercel.json` de cada
+pasta faz a Vercel pular o build quando o commit não mexe nela.
 
-Ordem (a migration 011 só funciona com o código novo no ar, porque o código antigo depende do role `anon`):
+| Projeto | Root Directory |
+|---|---|
+| API + bots (Python serverless) | `backend` |
+| Dashboard | `frontend` |
+| Pedidos (módulo independente) | `pedidos` |
 
-1. No Render, criar o serviço pelo Blueprint e preencher as variáveis `sync: false`.
-2. Deploy do backend. No log deve aparecer `Bot ativo em modo webhook: https://.../telegram/webhook`.
-3. Aplicar `011_revoke_anon_access.sql` no Supabase.
-4. Na Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   `NEXT_PUBLIC_API_URL` (URL do Render) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
-5. No Render, `CORS_ORIGINS` com o domínio da Vercel.
+### Backend (`backend/`)
 
-Migrations novas depois do primeiro deploy: `012_user_identities.sql`,
-`013_invites_expiry_optional_email.sql` e `014_chat_bindings.sql` só adicionam, então podem ser
-aplicadas antes do deploy do código que as usa. Usuários antigos (só com `users.telegram_id`)
-são adotados automaticamente na primeira mensagem.
+A Vercel injeta `VERCEL=1`, que liga o modo serverless: o webhook do Telegram/WhatsApp é
+processado dentro da própria requisição (sem fila em background, que a função congelaria) e
+reentregas são descartadas pela tabela `processed_updates`.
 
-No plano free o serviço hiberna sem tráfego; a primeira mensagem depois disso acorda o serviço
-e pode demorar. O Telegram reentrega updates que falharam.
+1. Aplicar `015_processed_updates.sql` no Supabase (aditiva).
+2. Criar o projeto na Vercel com Root Directory = `backend`. Variáveis: todas do `.env.example`
+   com `TELEGRAM_MODE=webhook` (`PUBLIC_BASE_URL` não é necessário) e `CORS_ORIGINS` com o
+   domínio do dashboard.
+3. Após o deploy, registrar o webhook (substitui qualquer webhook/polling anterior do bot):
+
+```bash
+cd backend
+python -m tgbot.set_webhook https://<projeto-backend>.vercel.app
+```
+
+4. WhatsApp (se usado): apontar o webhook no painel da Meta para `https://<projeto-backend>.vercel.app/whatsapp/webhook`.
+
+### Dashboard (`frontend/`)
+
+Variáveis: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_API_URL` (URL do projeto backend) e `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`.
+
+### Render (alternativa)
+
+O `render.yaml` continua válido: backend e bot como um web service sempre ligado
+(`TELEGRAM_MODE=webhook` + `PUBLIC_BASE_URL`), com a fila em background. No plano free o
+serviço hiberna e a primeira mensagem depois disso demora.
 
 ## Testes
 

@@ -47,4 +47,5 @@ Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Vestuário, Outro
 - Valores sempre no formato: R$ 1.234,56
 - Datas: DD/MM/AAAA
 - Use listas com marcadores para múltiplos itens
+- Texto simples: não use markdown (nada de **negrito**, # títulos ou tabelas), pois o chat mostra os símbolos literalmente
 """
