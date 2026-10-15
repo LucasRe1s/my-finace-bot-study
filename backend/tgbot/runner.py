@@ -58,11 +58,9 @@ def main():
     o polling apaga o webhook registrado no bot de producao."""
     import logging
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    from app.logging_config import configure_logging
+
+    configure_logging()
 
     app = build_app(api_base_url=settings.api_base_url)
     logging.getLogger("bot").info("Bot iniciado em modo polling. API em %s", settings.api_base_url)

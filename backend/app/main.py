@@ -4,15 +4,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
+from .logging_config import configure_logging
 from .routers import transactions, summary, limits, groups, auth_link
 from tgbot.webhook import router as telegram_router, telegram_lifespan
 from wabot.webhook import router as whatsapp_router
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
+configure_logging()
 logger = logging.getLogger("api")
 
 app = FastAPI(title="my-finance-bot API", version="0.1.0", lifespan=telegram_lifespan)
