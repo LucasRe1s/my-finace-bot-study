@@ -233,3 +233,19 @@ def test_help_text_hides_telegram_group_commands_on_whatsapp():
     whatsapp = help_text("whatsapp")
     assert "/vincular" not in whatsapp and "/f " not in whatsapp
     assert "/convidar" in whatsapp and "/ajuda" in whatsapp
+
+
+@pytest.mark.asyncio
+async def test_logs_do_not_contain_message_or_reply_content(db, caplog):
+    """Mensagens e respostas tem valores e descricoes financeiras: so metadados no log."""
+    caplog.set_level("INFO")
+    with (
+        patch.object(conversation, "create_agent", return_value=_agent_replying("Saldo: R$ 10,00")),
+        patch.object(conversation, "build_tools", return_value=[]),
+    ):
+        await process_message(MSG, api_base_url="http://internal")
+
+    logged = caplog.text
+    assert "Qual meu saldo?" not in logged
+    assert "R$ 10,00" not in logged
+    assert "Mensagem recebida" in logged  # o evento continua registrado

@@ -109,7 +109,8 @@ async def process_message(
             alert_sink=alerts,
             invite_link=invite_link,
         )
-        logger.info("[%s] Mensagem recebida: %s", who, msg.text[:80])
+        # Sem conteudo no log: mensagens tem valores e descricoes financeiras.
+        logger.info("[%s] Mensagem recebida (%d caracteres)", who, len(msg.text))
         response = await create_agent(tools).arun(_with_history(history[-10:], msg.text))
         reply = response.content if hasattr(response, "content") else str(response)
 
@@ -127,7 +128,7 @@ async def process_message(
         logger.exception("[%s] Falha ao processar mensagem", who)
         return _reply(msg, FALLBACK_REPLY)
 
-    logger.info("[%s] Resposta: %s", who, reply[:120])
+    logger.info("[%s] Resposta enviada (%d caracteres)", who, len(reply))
     return _reply(msg, reply) + [OutgoingMessage(chat_id=msg.chat_id, text=a) for a in alerts]
 
 
