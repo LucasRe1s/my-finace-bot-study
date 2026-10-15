@@ -1,0 +1,7 @@
+.venv
+.env
+tests
+supabase
+__pycache__
+*.log
+uv.lock

@@ -74,3 +74,10 @@ def test_chat_bindings_and_group_history():
         assert f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;" in sql
         assert f"REVOKE ALL ON public.{table} FROM anon;" in sql
     assert not re.search(r"\bTO\s+anon\b", sql)
+
+
+def test_processed_updates_is_backend_only():
+    sql = _sql("015_processed_updates.sql")
+    assert "CREATE TABLE public.processed_updates" in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert re.search(r"REVOKE ALL ON public\.processed_updates FROM anon, authenticated", sql)
